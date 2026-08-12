@@ -1,0 +1,71 @@
+@import "tailwindcss";
+
+@theme {
+  --color-palette-white: #ffffff;
+  --color-palette-cream: #faf8f5;
+  --color-palette-cream-subtle: #f3efe6;
+  --color-palette-[#2d4536]: #2d4536;
+  --color-palette-sage-light: #c3ccc0;
+  --color-palette-taupe: #ad9e92;
+  --color-palette-moss: #606e60;
+  --color-palette-pine: #1c2a20;
+}
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+  body {
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    background-color: #faf8f5;
+    color: #1c2a20;
+  }
+  h1, h2, h3, .font-serif {
+    font-family: 'Playfair Display', Georgia, serif;
+  }
+}
+
+/* Typography Pairing Custom Overrides */
+.font-pairing-editorial h1,
+.font-pairing-editorial h2,
+.font-pairing-editorial h3,
+.font-pairing-editorial .font-serif {
+  font-family: 'Playfair Display', Georgia, serif;
+}
+
+.font-pairing-imperial h1,
+.font-pairing-imperial h2,
+.font-pairing-imperial h3,
+.font-pairing-imperial .font-serif {
+  font-family: 'Cinzel', Georgia, serif;
+}
+
+.font-pairing-botanical h1,
+.font-pairing-botanical h2,
+.font-pairing-botanical h3,
+.font-pairing-botanical .font-serif {
+  font-family: 'Cormorant Garamond', Georgia, serif;
+}
+
+.font-pairing-clean h1,
+.font-pairing-clean h2,
+.font-pairing-clean h3,
+.font-pairing-clean .font-serif {
+  font-family: 'Outfit', sans-serif;
+}
+
+/* Custom scrollbar styling in Nature Palette */
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #f3efe6;
+}
+::-webkit-scrollbar-thumb {
+  background: #2d4536;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #1c2a20;
+}
+
