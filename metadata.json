@@ -1,0 +1,6 @@
+{
+  "name": "SLTT ESTANCIAS - Resort & Accommodations",
+  "description": "Official booking and reservation platform for SLTT ESTANCIAS in Tigbao, Mauswagon Lugait. Explore luxury rooms, packages, resort amenities, check availability, and manage reservations.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
