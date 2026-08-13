@@ -312,14 +312,22 @@ export const ResortProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   });
 
   useEffect(() => {
-    localStorage.setItem('sltt_admin_users_v1', JSON.stringify(adminUsers));
+    try {
+      localStorage.setItem('sltt_admin_users_v1', JSON.stringify(adminUsers));
+    } catch (e) {
+      console.warn('Storage save error:', e);
+    }
   }, [adminUsers]);
 
   useEffect(() => {
-    if (currentAdminUser) {
-      localStorage.setItem('sltt_current_admin_user', JSON.stringify(currentAdminUser));
-    } else {
-      localStorage.removeItem('sltt_current_admin_user');
+    try {
+      if (currentAdminUser) {
+        localStorage.setItem('sltt_current_admin_user', JSON.stringify(currentAdminUser));
+      } else {
+        localStorage.removeItem('sltt_current_admin_user');
+      }
+    } catch (e) {
+      console.warn('Storage save error:', e);
     }
   }, [currentAdminUser]);
   const [resortInfo, setResortInfo] = useState<ResortInfo>(() => {
@@ -379,25 +387,24 @@ export const ResortProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   useEffect(() => {
-    localStorage.setItem('sltt_theme', theme);
+    try {
+      localStorage.setItem('sltt_theme', theme);
+    } catch (e) {
+      console.warn('Storage save error:', e);
+    }
   }, [theme]);
 
-  // LocalStorage persisted collections
-  const [rooms, setRooms] = useState<Room[]>(() => {
+  // Rooms state loaded from initial state, synchronized with Firebase/Firestore
+  const [rooms, setRooms] = useState<Room[]>(INITIAL_ROOMS);
+
+  // Safe one-time cleanup of obsolete sltt_rooms_v3 cache
+  useEffect(() => {
     try {
-      const saved = localStorage.getItem('sltt_rooms_v3');
-      if (saved) {
-        const parsed: Room[] = JSON.parse(saved);
-        if (Array.isArray(parsed)) {
-          const hasCottages = parsed.some((r) => r && r.category === 'Cottages');
-          if (hasCottages) return parsed;
-        }
-      }
+      localStorage.removeItem('sltt_rooms_v3');
     } catch (e) {
-      console.error('Error loading rooms:', e);
+      console.warn('Unable to clear old room cache:', e);
     }
-    return INITIAL_ROOMS;
-  });
+  }, []);
 
   const [packages, setPackages] = useState<Package[]>(() => {
     try {
@@ -485,36 +492,40 @@ export const ResortProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'error' | 'info' } | null>(null);
 
   // Sync state to local storage
+  const safeSave = (key: string, value: any) => {
+    try {
+      localStorage.setItem(key, JSON.stringify(value));
+    } catch (e) {
+      console.warn(`Storage save error for ${key}:`, e);
+    }
+  };
+
   useEffect(() => {
-    localStorage.setItem('sltt_resort_info', JSON.stringify(resortInfo));
+    safeSave('sltt_resort_info', resortInfo);
   }, [resortInfo]);
 
   useEffect(() => {
-    localStorage.setItem('sltt_payment_settings', JSON.stringify(paymentSettings));
+    safeSave('sltt_payment_settings', paymentSettings);
   }, [paymentSettings]);
 
   useEffect(() => {
-    localStorage.setItem('sltt_rooms_v3', JSON.stringify(rooms));
-  }, [rooms]);
-
-  useEffect(() => {
-    localStorage.setItem('sltt_packages', JSON.stringify(packages));
+    safeSave('sltt_packages', packages);
   }, [packages]);
 
   useEffect(() => {
-    localStorage.setItem('sltt_amenities_v2', JSON.stringify(amenities));
+    safeSave('sltt_amenities_v2', amenities);
   }, [amenities]);
 
   useEffect(() => {
-    localStorage.setItem('sltt_gallery', JSON.stringify(gallery));
+    safeSave('sltt_gallery', gallery);
   }, [gallery]);
 
   useEffect(() => {
-    localStorage.setItem('sltt_reviews', JSON.stringify(reviews));
+    safeSave('sltt_reviews', reviews);
   }, [reviews]);
 
   useEffect(() => {
-    localStorage.setItem('sltt_bookings', JSON.stringify(bookings));
+    safeSave('sltt_bookings', bookings);
   }, [bookings]);
 
   const showToast = (text: string, type: 'success' | 'error' | 'info' = 'success') => {
@@ -556,17 +567,21 @@ export const ResortProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   });
 
   useEffect(() => {
-    localStorage.setItem('sltt_notification_templates', JSON.stringify(notificationTemplates));
+    safeSave('sltt_notification_templates', notificationTemplates);
   }, [notificationTemplates]);
 
   useEffect(() => {
-    localStorage.setItem('sltt_notification_logs', JSON.stringify(notificationLogs));
+    safeSave('sltt_notification_logs', notificationLogs);
   }, [notificationLogs]);
 
   // Live Chat state
   const [isLiveChatOpen, setIsLiveChatOpen] = useState(false);
   const [currentCustomerThreadId, setCurrentCustomerThreadId] = useState<string | null>(() => {
-    return localStorage.getItem('sltt_current_chat_thread_id') || null;
+    try {
+      return localStorage.getItem('sltt_current_chat_thread_id') || null;
+    } catch {
+      return null;
+    }
   });
 
   const [chatThreads, setChatThreads] = useState<ChatThread[]>(() => {
@@ -583,12 +598,16 @@ export const ResortProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   });
 
   useEffect(() => {
-    localStorage.setItem('sltt_chat_threads', JSON.stringify(chatThreads));
+    safeSave('sltt_chat_threads', chatThreads);
   }, [chatThreads]);
 
   useEffect(() => {
     if (currentCustomerThreadId) {
-      localStorage.setItem('sltt_current_chat_thread_id', currentCustomerThreadId);
+      try {
+        localStorage.setItem('sltt_current_chat_thread_id', currentCustomerThreadId);
+      } catch (e) {
+        console.warn('Storage save error:', e);
+      }
     }
   }, [currentCustomerThreadId]);
 
@@ -798,8 +817,9 @@ export const ResortProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   // User Management Methods
   const authenticateAdminUser = (username: string, pass: string): AdminUser | null => {
+    const cleanUsername = (username || '').trim().toLowerCase();
     const found = adminUsers.find(
-      (u) => u.username.trim().toLowerCase() === username.trim().toLowerCase() && u.password === pass && u.isActive
+      (u) => (u?.username || '').trim().toLowerCase() === cleanUsername && u?.password === pass && u?.isActive
     );
     if (found) {
       const updatedUser = { ...found, lastLogin: new Date().toISOString() };
@@ -1153,7 +1173,7 @@ export const ResortProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const getRoomById = (id: string) => rooms.find((r) => r.id === id);
 
   const getBookingByReference = (ref: string) =>
-    bookings.find((b) => b.referenceNumber.trim().toUpperCase() === ref.trim().toUpperCase());
+    bookings.find((b) => (b?.referenceNumber || '').trim().toUpperCase() === (ref || '').trim().toUpperCase());
 
   return (
     <ResortContext.Provider

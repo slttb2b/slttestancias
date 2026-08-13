@@ -27,10 +27,11 @@ export const MyBookingsModal: React.FC<MyBookingsModalProps> = ({ isOpen, onClos
       setFoundBooking(result);
     } else {
       // Try searching by mobile or guest name
+      const query = searchInput.trim().toLowerCase();
       const matched = bookings.find(
         (b) =>
-          b.mobile.includes(searchInput.trim()) ||
-          b.guestName.toLowerCase().includes(searchInput.trim().toLowerCase())
+          (b?.mobile || '').includes(searchInput.trim()) ||
+          (b?.guestName || '').toLowerCase().includes(query)
       );
       setFoundBooking(matched || null);
     }

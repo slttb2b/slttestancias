@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, Component, ErrorInfo, ReactNode } from 'react';
 import { ResortProvider, useResort } from './context/ResortContext';
 import { SectionId, CustomBlock } from './types';
 import { Header } from './components/Header';
@@ -27,6 +27,59 @@ import { FAQBlock } from './components/blocks/FAQBlock';
 import { AnnouncementBlock } from './components/blocks/AnnouncementBlock';
 import { VideoBlock } from './components/blocks/VideoBlock';
 import { PromoBlock } from './components/blocks/PromoBlock';
+
+interface ErrorBoundaryProps {
+  children: ReactNode;
+}
+
+interface ErrorBoundaryState {
+  hasError: boolean;
+  error: Error | null;
+}
+
+class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  constructor(props: ErrorBoundaryProps) {
+    super(props);
+    this.state = {
+      hasError: false,
+      error: null,
+    };
+  }
+
+  public static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return { hasError: true, error };
+  }
+
+  public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.error('Uncaught error caught by ErrorBoundary:', error, errorInfo);
+  }
+
+  public render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen bg-[#1c2a20] text-[#ebe5de] flex items-center justify-center p-6 text-center">
+          <div className="max-w-md bg-[#132016] border border-[#606e60] p-8 rounded-3xl space-y-4 shadow-2xl">
+            <h2 className="text-xl font-bold font-serif text-amber-400">SLTT ESTANCIAS RESORT</h2>
+            <p className="text-xs text-[#c3ccc0]">
+              An issue occurred while rendering this component. Click below to reload the portal.
+            </p>
+            <button
+              onClick={() => {
+                this.setState({ hasError: false, error: null });
+                window.location.reload();
+              }}
+              className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs uppercase cursor-pointer"
+            >
+              Reload Page
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
 
 function MainLayout() {
   const { activeTab, theme, resortInfo, isAdminLoggedIn } = useResort();
@@ -164,8 +217,10 @@ function MainLayout() {
 
 export default function App() {
   return (
-    <ResortProvider>
-      <MainLayout />
-    </ResortProvider>
+    <ErrorBoundary>
+      <ResortProvider>
+        <MainLayout />
+      </ResortProvider>
+    </ErrorBoundary>
   );
 }

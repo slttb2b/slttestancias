@@ -3,6 +3,8 @@ import { useResort } from '../context/ResortContext';
 import { BookingStatus, Room, Package, PaymentSettings, ResortInfo, ResortDesignAssets, SectionId, Booking, NotificationLog, AdminUser, AdminUserRole, AdminUserPermissions } from '../types';
 import { formatNotificationMessage } from '../data/resortData';
 import { downloadVoucher } from '../utils/voucher';
+import { uploadImageToFirebaseStorage } from '../services/storageService';
+import { resolveImageUrl } from '../utils/imageUtils';
 import {
   ShieldCheck,
   Shield,
@@ -343,11 +345,13 @@ export const AdminDashboard: React.FC = () => {
 
   // Filtered Bookings
   const filteredBookings = bookings.filter((b) => {
+    if (!b) return false;
     const matchesStatus = statusFilter === 'All' || b.status === statusFilter;
+    const sq = searchQuery.toLowerCase();
     const matchesQuery =
-      b.referenceNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      b.guestName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      b.mobile.includes(searchQuery);
+      (b.referenceNumber || '').toLowerCase().includes(sq) ||
+      (b.guestName || '').toLowerCase().includes(sq) ||
+      (b.mobile || '').includes(searchQuery);
     return matchesStatus && matchesQuery;
   });
 
@@ -419,45 +423,37 @@ export const AdminDashboard: React.FC = () => {
     }
   };
 
-  const handleFileUploadRoomFeatured = (e: React.ChangeEvent<HTMLInputElement>, isEdit: boolean) => {
+  const handleFileUploadRoomFeatured = async (e: React.ChangeEvent<HTMLInputElement>, isEdit: boolean) => {
     const file = e.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onload = (uploadEvent) => {
-        if (uploadEvent.target?.result) {
-          const url = uploadEvent.target.result as string;
-          if (isEdit && editingRoom) {
-            setEditingRoom({ ...editingRoom, featuredImage: url });
-          } else {
-            setNewRoomData((prev) => ({ ...prev, featuredImage: url }));
-          }
+      const url = await uploadImageToFirebaseStorage(file, 'rooms');
+      if (url) {
+        if (isEdit && editingRoom) {
+          setEditingRoom({ ...editingRoom, featuredImage: url });
+        } else {
+          setNewRoomData((prev) => ({ ...prev, featuredImage: url }));
         }
-      };
-      reader.readAsDataURL(file);
+      }
     }
   };
 
-  const handleFileUploadGallery = (e: React.ChangeEvent<HTMLInputElement>, isEdit: boolean) => {
+  const handleFileUploadGallery = async (e: React.ChangeEvent<HTMLInputElement>, isEdit: boolean) => {
     const file = e.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onload = (uploadEvent) => {
-        if (uploadEvent.target?.result) {
-          const url = uploadEvent.target.result as string;
-          if (isEdit && editingRoom) {
-            setEditingRoom({
-              ...editingRoom,
-              galleryImages: [...editingRoom.galleryImages, url],
-            });
-          } else {
-            setNewRoomData((prev) => ({
-              ...prev,
-              galleryImages: [...(prev.galleryImages || []), url],
-            }));
-          }
+      const url = await uploadImageToFirebaseStorage(file, 'rooms_gallery');
+      if (url) {
+        if (isEdit && editingRoom) {
+          setEditingRoom({
+            ...editingRoom,
+            galleryImages: [...editingRoom.galleryImages, url],
+          });
+        } else {
+          setNewRoomData((prev) => ({
+            ...prev,
+            galleryImages: [...(prev.galleryImages || []), url],
+          }));
         }
-      };
-      reader.readAsDataURL(file);
+      }
     }
   };
 
@@ -489,21 +485,17 @@ export const AdminDashboard: React.FC = () => {
     setIsAddingPackage(false);
   };
 
-  const handleFileUploadPackageImg = (e: React.ChangeEvent<HTMLInputElement>, isEdit: boolean) => {
+  const handleFileUploadPackageImg = async (e: React.ChangeEvent<HTMLInputElement>, isEdit: boolean) => {
     const file = e.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onload = (uploadEvent) => {
-        if (uploadEvent.target?.result) {
-          const url = uploadEvent.target.result as string;
-          if (isEdit && editingPackage) {
-            setEditingPackage({ ...editingPackage, featuredImage: url });
-          } else {
-            setNewPackageData((prev) => ({ ...prev, featuredImage: url }));
-          }
+      const url = await uploadImageToFirebaseStorage(file, 'packages');
+      if (url) {
+        if (isEdit && editingPackage) {
+          setEditingPackage({ ...editingPackage, featuredImage: url });
+        } else {
+          setNewPackageData((prev) => ({ ...prev, featuredImage: url }));
         }
-      };
-      reader.readAsDataURL(file);
+      }
     }
   };
 
@@ -513,28 +505,24 @@ export const AdminDashboard: React.FC = () => {
     updateResortInfo(systemForm);
   };
 
-  const handleFileUploadSystemAsset = (
+  const handleFileUploadSystemAsset = async (
     e: React.ChangeEvent<HTMLInputElement>,
     assetKey: keyof ResortDesignAssets
   ) => {
     const file = e.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onload = (uploadEvent) => {
-        if (uploadEvent.target?.result) {
-          const url = uploadEvent.target.result as string;
-          const updated = {
-            ...systemForm,
-            designAssets: {
-              ...(systemForm.designAssets || { heroBgImg: '', infinityPoolImg: '', villaPoolImg: '', deluxeRoomImg: '' }),
-              [assetKey]: url,
-            },
-          };
-          setSystemForm(updated);
-          updateResortInfo(updated);
-        }
-      };
-      reader.readAsDataURL(file);
+      const url = await uploadImageToFirebaseStorage(file, 'system_assets');
+      if (url) {
+        const updated = {
+          ...systemForm,
+          designAssets: {
+            ...(systemForm.designAssets || { heroBgImg: '', infinityPoolImg: '', villaPoolImg: '', deluxeRoomImg: '' }),
+            [assetKey]: url,
+          },
+        };
+        setSystemForm(updated);
+        updateResortInfo(updated);
+      }
     }
   };
 
@@ -564,27 +552,23 @@ export const AdminDashboard: React.FC = () => {
     showToast(`${exists ? 'Enabled' : 'Disabled'} section on live website`, 'info');
   };
 
-  const handleDropAsset = (e: React.DragEvent<HTMLDivElement>, assetKey: keyof ResortDesignAssets) => {
+  const handleDropAsset = async (e: React.DragEvent<HTMLDivElement>, assetKey: keyof ResortDesignAssets) => {
     e.preventDefault();
     const file = e.dataTransfer.files?.[0];
     if (file && file.type.startsWith('image/')) {
-      const reader = new FileReader();
-      reader.onload = (uploadEvent) => {
-        if (uploadEvent.target?.result) {
-          const url = uploadEvent.target.result as string;
-          const updated = {
-            ...systemForm,
-            designAssets: {
-              ...(systemForm.designAssets || { heroBgImg: '', infinityPoolImg: '', villaPoolImg: '', deluxeRoomImg: '' }),
-              [assetKey]: url,
-            },
-          };
-          setSystemForm(updated);
-          updateResortInfo(updated);
-          showToast(`Updated image asset!`, 'success');
-        }
-      };
-      reader.readAsDataURL(file);
+      const url = await uploadImageToFirebaseStorage(file, 'system_assets');
+      if (url) {
+        const updated = {
+          ...systemForm,
+          designAssets: {
+            ...(systemForm.designAssets || { heroBgImg: '', infinityPoolImg: '', villaPoolImg: '', deluxeRoomImg: '' }),
+            [assetKey]: url,
+          },
+        };
+        setSystemForm(updated);
+        updateResortInfo(updated);
+        showToast(`Updated image asset!`, 'success');
+      }
     }
   };
 
@@ -594,23 +578,19 @@ export const AdminDashboard: React.FC = () => {
     updatePaymentSettings(paymentForm);
   };
 
-  const handleFileUploadPaymentQR = (e: React.ChangeEvent<HTMLInputElement>, channel: 'gcash' | 'bpi') => {
+  const handleFileUploadPaymentQR = async (e: React.ChangeEvent<HTMLInputElement>, channel: 'gcash' | 'bpi') => {
     const file = e.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onload = (uploadEvent) => {
-        if (uploadEvent.target?.result) {
-          const url = uploadEvent.target.result as string;
-          setPaymentForm((prev) => ({
-            ...prev,
-            [channel]: {
-              ...prev[channel],
-              qrCodeUrl: url,
-            },
-          }));
-        }
-      };
-      reader.readAsDataURL(file);
+      const url = await uploadImageToFirebaseStorage(file, 'payment_qrs');
+      if (url) {
+        setPaymentForm((prev) => ({
+          ...prev,
+          [channel]: {
+            ...prev[channel],
+            qrCodeUrl: url,
+          },
+        }));
+      }
     }
   };
 
@@ -820,25 +800,31 @@ export const AdminDashboard: React.FC = () => {
                 </thead>
                 <tbody className="divide-y divide-[#606e60]/40">
                   {adminUsers
-                    .filter((u) =>
-                      u.fullName.toLowerCase().includes(userSearchQuery.toLowerCase()) ||
-                      u.username.toLowerCase().includes(userSearchQuery.toLowerCase()) ||
-                      u.email.toLowerCase().includes(userSearchQuery.toLowerCase()) ||
-                      (u.phone && u.phone.includes(userSearchQuery)) ||
-                      u.role.toLowerCase().includes(userSearchQuery.toLowerCase())
-                    )
+                    .filter((u) => {
+                      if (!u) return false;
+                      const q = userSearchQuery.toLowerCase();
+                      return (
+                        (u.fullName || '').toLowerCase().includes(q) ||
+                        (u.username || '').toLowerCase().includes(q) ||
+                        (u.email || '').toLowerCase().includes(q) ||
+                        (u.phone && u.phone.includes(userSearchQuery)) ||
+                        (u.role || '').toLowerCase().includes(q)
+                      );
+                    })
                     .map((u) => {
                       const isPrimaryMaster = u.username === 'SLTTESTANCIA_ADMIN';
+                      const fullName = u.fullName || 'User';
+                      const avatarChar = fullName.charAt(0).toUpperCase();
                       return (
                         <tr key={u.id} className="hover:bg-[#1c2a20]/60 transition-colors">
                           <td className="p-3.5">
                             <div className="flex items-center gap-3">
                               <div className="w-9 h-9 rounded-xl bg-[#0e1710] border border-[#606e60] flex items-center justify-center font-bold text-blue-400 text-sm shrink-0">
-                                {u.fullName.charAt(0).toUpperCase()}
+                                {avatarChar}
                               </div>
                               <div>
                                 <div className="font-bold text-[#ebe5de] flex items-center gap-1.5">
-                                  <span>{u.fullName}</span>
+                                  <span>{fullName}</span>
                                   {isPrimaryMaster && (
                                     <span className="px-1.5 py-0.2 rounded text-[9px] font-black bg-amber-500/20 text-amber-300 border border-amber-500/40">
                                       PRIMARY MASTER
@@ -3415,25 +3401,31 @@ export const AdminDashboard: React.FC = () => {
                   </thead>
                   <tbody className="divide-y divide-[#606e60]/40">
                     {adminUsers
-                      .filter((u) =>
-                        u.fullName.toLowerCase().includes(userSearchQuery.toLowerCase()) ||
-                        u.username.toLowerCase().includes(userSearchQuery.toLowerCase()) ||
-                        u.email.toLowerCase().includes(userSearchQuery.toLowerCase()) ||
-                        (u.phone && u.phone.includes(userSearchQuery)) ||
-                        u.role.toLowerCase().includes(userSearchQuery.toLowerCase())
-                      )
+                      .filter((u) => {
+                        if (!u) return false;
+                        const q = userSearchQuery.toLowerCase();
+                        return (
+                          (u.fullName || '').toLowerCase().includes(q) ||
+                          (u.username || '').toLowerCase().includes(q) ||
+                          (u.email || '').toLowerCase().includes(q) ||
+                          (u.phone && u.phone.includes(userSearchQuery)) ||
+                          (u.role || '').toLowerCase().includes(q)
+                        );
+                      })
                       .map((u) => {
                         const isPrimaryMaster = u.username === 'SLTTESTANCIA_ADMIN';
+                        const fullName = u.fullName || 'User';
+                        const avatarChar = fullName.charAt(0).toUpperCase();
                         return (
                           <tr key={u.id} className="hover:bg-[#1c2a20]/60 transition-colors">
                             <td className="p-3.5">
                               <div className="flex items-center gap-3">
                                 <div className="w-9 h-9 rounded-xl bg-[#0e1710] border border-[#606e60] flex items-center justify-center font-bold text-blue-400 text-sm shrink-0">
-                                  {u.fullName.charAt(0).toUpperCase()}
+                                  {avatarChar}
                                 </div>
                                 <div>
                                   <div className="font-bold text-[#ebe5de] flex items-center gap-1.5">
-                                    <span>{u.fullName}</span>
+                                    <span>{fullName}</span>
                                     {isPrimaryMaster && (
                                       <span className="px-1.5 py-0.2 rounded text-[9px] font-black bg-amber-500/20 text-amber-300 border border-amber-500/40">
                                         PRIMARY MASTER
@@ -3712,11 +3704,11 @@ export const AdminDashboard: React.FC = () => {
                     alert('Please fill out all required fields.');
                     return;
                   }
-                  if (adminUsers.some((u) => u.username.toLowerCase() === newUserData.username.toLowerCase())) {
+                  if (adminUsers.some((u) => (u?.username || '').toLowerCase() === (newUserData.username || '').toLowerCase())) {
                     alert('A user with this username already exists.');
                     return;
                   }
-                  addAdminUser(newUserData);
+                  addAdminUser({ ...newUserData, isActive: true });
                   setIsAddUserModalOpen(false);
                 }}
                 className="space-y-4 text-xs"

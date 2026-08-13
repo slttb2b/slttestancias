@@ -27,6 +27,7 @@ export interface Room {
   tagline: string;
   shortDescription: string;
   fullDescription: string;
+  description?: string;
   maxGuests: number;
   bedType: string;
   sizeSqM: number;
@@ -45,6 +46,7 @@ export interface Package {
   id: string;
   name: string;
   tagline: string;
+  description?: string;
   price: number;
   duration: string;
   inclusions: string[];
@@ -233,10 +235,13 @@ export interface ResortInfo {
   aboutHeading?: string;
   aboutStoryText?: string;
   aboutSecondaryText?: string;
+  aboutText?: string;
   amenitiesHeading?: string;
   amenitiesSubtitle?: string;
   locationHeading?: string;
   locationGuideText?: string;
+  contactHeading?: string;
+  contactSubtitle?: string;
   trustBadge1Title?: string;
   trustBadge1Sub?: string;
   trustBadge2Title?: string;

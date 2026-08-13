@@ -341,7 +341,11 @@ export const FloatingAdminToolbar: React.FC = () => {
 
           <button
             onClick={() => {
-              localStorage.setItem('sltt_resort_info', JSON.stringify(resortInfo));
+              try {
+                localStorage.setItem('sltt_resort_info', JSON.stringify(resortInfo));
+              } catch (e) {
+                console.warn('Storage save error:', e);
+              }
               showToast('Design changes published live to all website visitors!', 'success');
             }}
             className="px-4 py-1.5 rounded-xl bg-[#ad9e92] hover:bg-[#c3ccc0] text-[#1c2a20] font-extrabold flex items-center gap-1.5 cursor-pointer shadow-md transition-all active:scale-95"

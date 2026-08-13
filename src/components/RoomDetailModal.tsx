@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useResort } from '../context/ResortContext';
 import { X, Users, BedDouble, Maximize2, Check, Calendar, Sparkles } from 'lucide-react';
+import { resolveImageUrl } from '../utils/imageUtils';
 
 export const RoomDetailModal: React.FC = () => {
   const {
@@ -39,7 +40,7 @@ export const RoomDetailModal: React.FC = () => {
           <div className="p-6 bg-[#1c2a20] flex flex-col justify-between space-y-4">
             <div className="relative h-72 sm:h-80 rounded-2xl overflow-hidden border border-[#606e60]/60 shadow-xl">
               <img
-                src={images[activeImageIndex] || room.featuredImage}
+                src={resolveImageUrl(images[activeImageIndex] || room.featuredImage)}
                 alt={room.name}
                 className="w-full h-full object-cover"
                 referrerPolicy="no-referrer"
@@ -59,7 +60,7 @@ export const RoomDetailModal: React.FC = () => {
                     activeImageIndex === idx ? 'border-[#ad9e92] scale-105 shadow-md' : 'border-[#606e60]/60 opacity-60'
                   }`}
                 >
-                  <img src={img} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                  <img src={resolveImageUrl(img)} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                 </button>
               ))}
             </div>

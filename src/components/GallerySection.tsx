@@ -3,6 +3,7 @@ import { useResort } from '../context/ResortContext';
 import { Image, Maximize2, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import { EditableText } from './common/EditableText';
 import { EditableImage } from './common/EditableImage';
+import { resolveImageUrl } from '../utils/imageUtils';
 
 export const GallerySection: React.FC = () => {
   const { gallery, setGallery, theme } = useResort();
@@ -170,7 +171,7 @@ export const GallerySection: React.FC = () => {
           <div className="max-w-5xl w-full flex flex-col items-center">
             <div className="relative max-h-[75vh] rounded-3xl overflow-hidden border border-[#606e60] shadow-2xl">
               <img
-                src={filteredItems[activeLightboxIndex].imageUrl}
+                src={resolveImageUrl(filteredItems[activeLightboxIndex].imageUrl)}
                 alt={filteredItems[activeLightboxIndex].title}
                 className="max-h-[75vh] w-auto object-contain rounded-3xl"
                 referrerPolicy="no-referrer"

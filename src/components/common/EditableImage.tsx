@@ -1,6 +1,8 @@
 import React, { useRef } from 'react';
 import { useResort } from '../../context/ResortContext';
 import { UploadCloud, Image as ImageIcon } from 'lucide-react';
+import { resolveImageUrl } from '../../utils/imageUtils';
+import { uploadImageToFirebaseStorage } from '../../services/storageService';
 
 interface EditableImageProps {
   src: string;
@@ -20,33 +22,27 @@ export const EditableImage: React.FC<EditableImageProps> = ({
   const { isVisualEditMode, showToast } = useResort();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file && file.type.startsWith('image/')) {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        if (event.target?.result) {
-          onChange(event.target.result as string);
-          showToast('Image replaced successfully!', 'success');
-        }
-      };
-      reader.readAsDataURL(file);
+      const url = await uploadImageToFirebaseStorage(file, 'design_assets');
+      if (url) {
+        onChange(url);
+        showToast('Image replaced successfully!', 'success');
+      }
     }
   };
 
-  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+  const handleDrop = async (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     if (!isVisualEditMode) return;
     const file = e.dataTransfer.files?.[0];
     if (file && file.type.startsWith('image/')) {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        if (event.target?.result) {
-          onChange(event.target.result as string);
-          showToast('Image updated via drag & drop!', 'success');
-        }
-      };
-      reader.readAsDataURL(file);
+      const url = await uploadImageToFirebaseStorage(file, 'design_assets');
+      if (url) {
+        onChange(url);
+        showToast('Image updated via drag & drop!', 'success');
+      }
     }
   };
 
@@ -60,7 +56,7 @@ export const EditableImage: React.FC<EditableImageProps> = ({
       onDrop={handleDrop}
       onDragOver={handleDragOver}
     >
-      <img src={src} alt={alt} className={className} referrerPolicy="no-referrer" />
+      <img src={resolveImageUrl(src)} alt={alt} className={className} referrerPolicy="no-referrer" />
 
       {isVisualEditMode && (
         <>
