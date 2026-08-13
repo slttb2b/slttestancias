@@ -138,12 +138,12 @@ interface ResortContextType {
   attachBookingReceipt: (bookingId: string, receiptUrl: string, refCode?: string) => void;
   
   // Room actions
-  toggleRoomAvailability: (roomId: string) => void;
-  updateRoomPrice: (roomId: string, newPrice: number) => void;
-  addRoom: (room: Room) => void;
-  updateRoom: (room: Room) => void;
-  deleteRoom: (roomId: string) => void;
-  blockRoomDates: (roomId: string, dates: string[]) => void;
+  toggleRoomAvailability: (roomId: string) => Promise<void> | void;
+  updateRoomPrice: (roomId: string, newPrice: number) => Promise<void> | void;
+  addRoom: (room: Room) => Promise<void>;
+  updateRoom: (room: Room) => Promise<void>;
+  deleteRoom: (roomId: string) => Promise<void>;
+  blockRoomDates: (roomId: string, dates: string[]) => Promise<void> | void;
   
   // Package actions
   addPackage: (pkg: Package) => void;
@@ -1098,58 +1098,88 @@ export const ResortProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     showToast('Payment receipt uploaded successfully!', 'success');
   };
 
-  const toggleRoomAvailability = (roomId: string) => {
+  const toggleRoomAvailability = async (roomId: string) => {
     const target = rooms.find((r) => r.id === roomId);
     if (target) {
       const updated = { ...target, isAvailable: !target.isAvailable };
-      saveRoomToFirestore(updated);
+      try {
+        await saveRoomToFirestore(updated);
+        setRooms((prev) =>
+          prev.map((r) => (r.id === roomId ? { ...r, isAvailable: !r.isAvailable } : r))
+        );
+        showToast('Room availability updated.', 'info');
+      } catch (err) {
+        showToast('Failed to update room availability.', 'error');
+      }
     }
-    setRooms((prev) =>
-      prev.map((r) => (r.id === roomId ? { ...r, isAvailable: !r.isAvailable } : r))
-    );
-    showToast('Room availability updated.', 'info');
   };
 
-  const updateRoomPrice = (roomId: string, newPrice: number) => {
+  const updateRoomPrice = async (roomId: string, newPrice: number) => {
     const target = rooms.find((r) => r.id === roomId);
     if (target) {
       const updated = { ...target, pricePerNight: newPrice };
-      saveRoomToFirestore(updated);
+      try {
+        await saveRoomToFirestore(updated);
+        setRooms((prev) =>
+          prev.map((r) => (r.id === roomId ? { ...r, pricePerNight: newPrice } : r))
+        );
+        showToast('Room price updated.', 'success');
+      } catch (err) {
+        showToast('Failed to update room price.', 'error');
+      }
     }
-    setRooms((prev) =>
-      prev.map((r) => (r.id === roomId ? { ...r, pricePerNight: newPrice } : r))
-    );
-    showToast('Room price updated.', 'success');
   };
 
-  const addRoom = (newRoom: Room) => {
-    saveRoomToFirestore(newRoom);
-    setRooms((prev) => [...prev, newRoom]);
-    showToast(`Room "${newRoom.name}" added.`, 'success');
+  const addRoom = async (newRoom: Room): Promise<void> => {
+    try {
+      await saveRoomToFirestore(newRoom);
+      setRooms((prev) => [...prev, newRoom]);
+      showToast(`Room "${newRoom.name}" added.`, 'success');
+    } catch (err) {
+      console.error('Error adding room:', err);
+      showToast('Room details could not be saved to database.', 'error');
+      throw err;
+    }
   };
 
-  const updateRoom = (updatedRoom: Room) => {
-    saveRoomToFirestore(updatedRoom);
-    setRooms((prev) => prev.map((r) => (r.id === updatedRoom.id ? updatedRoom : r)));
-    showToast(`Room "${updatedRoom.name}" updated.`, 'success');
+  const updateRoom = async (updatedRoom: Room): Promise<void> => {
+    try {
+      await saveRoomToFirestore(updatedRoom);
+      setRooms((prev) => prev.map((r) => (r.id === updatedRoom.id ? updatedRoom : r)));
+      showToast(`Room "${updatedRoom.name}" updated.`, 'success');
+    } catch (err) {
+      console.error('Error updating room:', err);
+      showToast('Room details could not be saved to database.', 'error');
+      throw err;
+    }
   };
 
-  const deleteRoom = (roomId: string) => {
-    deleteRoomFromFirestore(roomId);
-    setRooms((prev) => prev.filter((r) => r.id !== roomId));
-    showToast('Room deleted.', 'info');
+  const deleteRoom = async (roomId: string): Promise<void> => {
+    try {
+      await deleteRoomFromFirestore(roomId);
+      setRooms((prev) => prev.filter((r) => r.id !== roomId));
+      showToast('Room deleted.', 'info');
+    } catch (err) {
+      console.error('Error deleting room:', err);
+      showToast('Failed to delete room from database.', 'error');
+      throw err;
+    }
   };
 
-  const blockRoomDates = (roomId: string, dates: string[]) => {
+  const blockRoomDates = async (roomId: string, dates: string[]) => {
     const target = rooms.find((r) => r.id === roomId);
     if (target) {
       const updated = { ...target, blockedDates: dates };
-      saveRoomToFirestore(updated);
+      try {
+        await saveRoomToFirestore(updated);
+        setRooms((prev) =>
+          prev.map((r) => (r.id === roomId ? { ...r, blockedDates: dates } : r))
+        );
+        showToast('Blocked dates saved for room.', 'success');
+      } catch (err) {
+        showToast('Failed to save blocked dates.', 'error');
+      }
     }
-    setRooms((prev) =>
-      prev.map((r) => (r.id === roomId ? { ...r, blockedDates: dates } : r))
-    );
-    showToast('Blocked dates saved for room.', 'success');
   };
 
   const addPackage = (newPkg: Package) => {

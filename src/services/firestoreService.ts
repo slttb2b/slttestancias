@@ -277,6 +277,7 @@ export const saveAdminUserToFirestore = async (user: AdminUser) => {
     await setDoc(doc(db, COLLECTIONS.ADMIN_USERS, user.id), cleanForFirestore(user), { merge: true });
   } catch (err) {
     console.error('Firestore saveAdminUser error:', err);
+    throw err;
   }
 };
 
@@ -285,6 +286,7 @@ export const deleteAdminUserFromFirestore = async (userId: string) => {
     await deleteDoc(doc(db, COLLECTIONS.ADMIN_USERS, userId));
   } catch (err) {
     console.error('Firestore deleteAdminUser error:', err);
+    throw err;
   }
 };
 
@@ -293,6 +295,7 @@ export const saveBookingToFirestore = async (booking: Booking) => {
     await setDoc(doc(db, COLLECTIONS.BOOKINGS, booking.id), cleanForFirestore(booking), { merge: true });
   } catch (err) {
     console.error('Firestore saveBooking error:', err);
+    throw err;
   }
 };
 
@@ -301,6 +304,7 @@ export const deleteBookingFromFirestore = async (bookingId: string) => {
     await deleteDoc(doc(db, COLLECTIONS.BOOKINGS, bookingId));
   } catch (err) {
     console.error('Firestore deleteBooking error:', err);
+    throw err;
   }
 };
 
@@ -309,6 +313,7 @@ export const saveRoomToFirestore = async (room: Room) => {
     await setDoc(doc(db, COLLECTIONS.ROOMS, room.id), cleanForFirestore(room), { merge: true });
   } catch (err) {
     console.error('Firestore saveRoom error:', err);
+    throw err;
   }
 };
 
@@ -317,6 +322,7 @@ export const deleteRoomFromFirestore = async (roomId: string) => {
     await deleteDoc(doc(db, COLLECTIONS.ROOMS, roomId));
   } catch (err) {
     console.error('Firestore deleteRoom error:', err);
+    throw err;
   }
 };
 
@@ -325,6 +331,7 @@ export const savePackageToFirestore = async (pkg: Package) => {
     await setDoc(doc(db, COLLECTIONS.PACKAGES, pkg.id), cleanForFirestore(pkg), { merge: true });
   } catch (err) {
     console.error('Firestore savePackage error:', err);
+    throw err;
   }
 };
 
@@ -333,6 +340,7 @@ export const deletePackageFromFirestore = async (pkgId: string) => {
     await deleteDoc(doc(db, COLLECTIONS.PACKAGES, pkgId));
   } catch (err) {
     console.error('Firestore deletePackage error:', err);
+    throw err;
   }
 };
 
@@ -341,6 +349,7 @@ export const saveChatThreadToFirestore = async (thread: ChatThread) => {
     await setDoc(doc(db, COLLECTIONS.CHAT_THREADS, thread.id), cleanForFirestore(thread), { merge: true });
   } catch (err) {
     console.error('Firestore saveChatThread error:', err);
+    throw err;
   }
 };
 
@@ -349,6 +358,7 @@ export const deleteChatThreadFromFirestore = async (threadId: string) => {
     await deleteDoc(doc(db, COLLECTIONS.CHAT_THREADS, threadId));
   } catch (err) {
     console.error('Firestore deleteChatThread error:', err);
+    throw err;
   }
 };
 
@@ -357,6 +367,7 @@ export const saveResortInfoToFirestore = async (info: ResortInfo) => {
     await setDoc(doc(db, COLLECTIONS.SETTINGS, 'resort_info'), cleanForFirestore(info), { merge: true });
   } catch (err) {
     console.error('Firestore saveResortInfo error:', err);
+    throw err;
   }
 };
 
@@ -365,5 +376,6 @@ export const savePaymentSettingsToFirestore = async (settings: PaymentSettings) 
     await setDoc(doc(db, COLLECTIONS.SETTINGS, 'payment_settings'), cleanForFirestore(settings), { merge: true });
   } catch (err) {
     console.error('Firestore savePaymentSettings error:', err);
+    throw err;
   }
 };

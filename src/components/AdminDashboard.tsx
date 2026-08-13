@@ -19,6 +19,7 @@ import {
   Edit,
   Trash2,
   Plus,
+  Loader2,
   Calendar,
   DollarSign,
   TrendingUp,
@@ -220,6 +221,8 @@ export const AdminDashboard: React.FC = () => {
   const [selectedCategoryTab, setSelectedCategoryTab] = useState<'All' | 'Rooms and Suites' | 'Cottages' | 'Filipino Kubos'>('All');
   const [editingRoom, setEditingRoom] = useState<Room | null>(null);
   const [isAddingRoom, setIsAddingRoom] = useState(false);
+  const [isUploadingRoomImage, setIsUploadingRoomImage] = useState(false);
+  const [isSavingRoom, setIsSavingRoom] = useState(false);
   const [newRoomData, setNewRoomData] = useState<Partial<Room>>({
     name: '',
     category: 'Rooms and Suites',
@@ -356,37 +359,54 @@ export const AdminDashboard: React.FC = () => {
   });
 
   // HANDLERS FOR ROOM MANAGEMENT
-  const handleSaveEditedRoom = () => {
-    if (!editingRoom) return;
-    updateRoom(editingRoom);
-    setEditingRoom(null);
+  const handleSaveEditedRoom = async () => {
+    if (!editingRoom || isSavingRoom || isUploadingRoomImage) return;
+    setIsSavingRoom(true);
+    try {
+      await updateRoom(editingRoom);
+      setEditingRoom(null);
+    } catch (err: any) {
+      console.error('Failed to save room details:', err);
+      showToast('Room details could not be saved. Please try again.', 'error');
+    } finally {
+      setIsSavingRoom(false);
+    }
   };
 
-  const handleCreateRoom = () => {
+  const handleCreateRoom = async () => {
     if (!newRoomData.name || !newRoomData.pricePerNight) {
       alert('Please provide at least Name and Price.');
       return;
     }
-    const created: Room = {
-      id: `room-${Date.now()}`,
-      name: newRoomData.name || 'New Accommodation',
-      category: newRoomData.category || (selectedCategoryTab !== 'All' ? selectedCategoryTab : 'Rooms and Suites'),
-      tagline: newRoomData.tagline || 'Comfortable retreat',
-      shortDescription: newRoomData.shortDescription || 'Spacious resort accommodation.',
-      fullDescription: newRoomData.fullDescription || 'Equipped with modern amenities and garden views.',
-      maxGuests: newRoomData.maxGuests || 2,
-      bedType: newRoomData.bedType || '1 Queen Bed',
-      sizeSqM: newRoomData.sizeSqM || 30,
-      pricePerNight: newRoomData.pricePerNight || 2500,
-      featuredImage: newRoomData.featuredImage || 'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?auto=format&fit=crop&w=1200&q=80',
-      galleryImages: newRoomData.galleryImages || [],
-      amenities: newRoomData.amenities || ['Air Conditioning', 'Free Wi-Fi'],
-      isAvailable: true,
-      isComingSoon: newRoomData.isComingSoon ?? false,
-      comingSoonNotice: newRoomData.comingSoonNotice || 'Coming Soon - Opening Soon!',
-    };
-    addRoom(created);
-    setIsAddingRoom(false);
+    if (isSavingRoom || isUploadingRoomImage) return;
+    setIsSavingRoom(true);
+    try {
+      const created: Room = {
+        id: `room-${Date.now()}`,
+        name: newRoomData.name || 'New Accommodation',
+        category: newRoomData.category || (selectedCategoryTab !== 'All' ? selectedCategoryTab : 'Rooms and Suites'),
+        tagline: newRoomData.tagline || 'Comfortable retreat',
+        shortDescription: newRoomData.shortDescription || 'Spacious resort accommodation.',
+        fullDescription: newRoomData.fullDescription || 'Equipped with modern amenities and garden views.',
+        maxGuests: newRoomData.maxGuests || 2,
+        bedType: newRoomData.bedType || '1 Queen Bed',
+        sizeSqM: newRoomData.sizeSqM || 30,
+        pricePerNight: newRoomData.pricePerNight || 2500,
+        featuredImage: newRoomData.featuredImage || 'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?auto=format&fit=crop&w=1200&q=80',
+        galleryImages: newRoomData.galleryImages || [],
+        amenities: newRoomData.amenities || ['Air Conditioning', 'Free Wi-Fi'],
+        isAvailable: true,
+        isComingSoon: newRoomData.isComingSoon ?? false,
+        comingSoonNotice: newRoomData.comingSoonNotice || 'Coming Soon - Opening Soon!',
+      };
+      await addRoom(created);
+      setIsAddingRoom(false);
+    } catch (err: any) {
+      console.error('Failed to create room:', err);
+      showToast('Room details could not be saved. Please try again.', 'error');
+    } finally {
+      setIsSavingRoom(false);
+    }
   };
 
   const handleQuickAddKubo = () => {
@@ -426,33 +446,58 @@ export const AdminDashboard: React.FC = () => {
   const handleFileUploadRoomFeatured = async (e: React.ChangeEvent<HTMLInputElement>, isEdit: boolean) => {
     const file = e.target.files?.[0];
     if (file) {
-      const url = await uploadImageToFirebaseStorage(file, 'rooms');
-      if (url) {
-        if (isEdit && editingRoom) {
-          setEditingRoom({ ...editingRoom, featuredImage: url });
-        } else {
-          setNewRoomData((prev) => ({ ...prev, featuredImage: url }));
+      setIsUploadingRoomImage(true);
+      try {
+        const url = await uploadImageToFirebaseStorage(file, 'rooms');
+        if (url) {
+          if (isEdit) {
+            setEditingRoom((prev) => (prev ? { ...prev, featuredImage: url } : null));
+          } else {
+            setNewRoomData((prev) => ({ ...prev, featuredImage: url }));
+          }
+          showToast('Featured cover image uploaded successfully!', 'success');
         }
+      } catch (err: any) {
+        console.error('Featured cover image upload error:', err);
+        showToast('Image upload failed. Please check your Firebase Storage configuration and try again.', 'error');
+      } finally {
+        setIsUploadingRoomImage(false);
+        e.target.value = '';
       }
     }
   };
 
   const handleFileUploadGallery = async (e: React.ChangeEvent<HTMLInputElement>, isEdit: boolean) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const url = await uploadImageToFirebaseStorage(file, 'rooms_gallery');
-      if (url) {
-        if (isEdit && editingRoom) {
-          setEditingRoom({
-            ...editingRoom,
-            galleryImages: [...editingRoom.galleryImages, url],
-          });
-        } else {
-          setNewRoomData((prev) => ({
-            ...prev,
-            galleryImages: [...(prev.galleryImages || []), url],
-          }));
+    const files = Array.from(e.target.files || []);
+    if (files.length > 0) {
+      setIsUploadingRoomImage(true);
+      try {
+        const urls = await Promise.all(files.map((f) => uploadImageToFirebaseStorage(f, 'rooms_gallery')));
+        const validUrls = urls.filter(Boolean);
+        if (validUrls.length > 0) {
+          if (isEdit) {
+            setEditingRoom((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    galleryImages: [...(prev.galleryImages || []), ...validUrls],
+                  }
+                : null
+            );
+          } else {
+            setNewRoomData((prev) => ({
+              ...prev,
+              galleryImages: [...(prev.galleryImages || []), ...validUrls],
+            }));
+          }
+          showToast(`Uploaded ${validUrls.length} gallery image(s).`, 'success');
         }
+      } catch (err: any) {
+        console.error('Gallery image upload error:', err);
+        showToast('Image upload failed. Please check your Firebase Storage configuration and try again.', 'error');
+      } finally {
+        setIsUploadingRoomImage(false);
+        e.target.value = '';
       }
     }
   };
@@ -4323,12 +4368,13 @@ export const AdminDashboard: React.FC = () => {
                 <div className="sm:col-span-2 space-y-2 pt-2 border-t border-[#606e60]/40">
                   <label className="text-xs font-bold text-[#ad9e92] block">Featured Cover Image</label>
                   <div className="flex items-center gap-4">
-                    <img src={editingRoom.featuredImage} alt="" className="w-20 h-16 rounded-lg object-cover border border-[#606e60]" referrerPolicy="no-referrer" />
+                    <img src={resolveImageUrl(editingRoom.featuredImage)} alt="" className="w-20 h-16 rounded-lg object-cover border border-[#606e60]" referrerPolicy="no-referrer" />
                     <input
                       type="file"
                       accept="image/*"
+                      disabled={isUploadingRoomImage || isSavingRoom}
                       onChange={(e) => handleFileUploadRoomFeatured(e, true)}
-                      className="text-xs text-[#c3ccc0] file:mr-2 file:py-1 file:px-2.5 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-[#ad9e92] file:text-[#1c2a20] cursor-pointer"
+                      className="text-xs text-[#c3ccc0] file:mr-2 file:py-1 file:px-2.5 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-[#ad9e92] file:text-[#1c2a20] cursor-pointer disabled:opacity-50"
                     />
                   </div>
                 </div>
@@ -4340,24 +4386,27 @@ export const AdminDashboard: React.FC = () => {
                     <input
                       type="file"
                       accept="image/*"
+                      multiple
+                      disabled={isUploadingRoomImage || isSavingRoom}
                       onChange={(e) => handleFileUploadGallery(e, true)}
-                      className="text-xs text-[#c3ccc0] file:mr-2 file:py-1 file:px-2 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-[#ad9e92] file:text-[#1c2a20] cursor-pointer"
+                      className="text-xs text-[#c3ccc0] file:mr-2 file:py-1 file:px-2 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-[#ad9e92] file:text-[#1c2a20] cursor-pointer disabled:opacity-50"
                     />
                   </div>
 
                   <div className="grid grid-cols-3 sm:grid-cols-4 gap-3 pt-2">
                     {editingRoom.galleryImages.map((img, idx) => (
                       <div key={idx} className="relative group rounded-lg overflow-hidden border border-[#606e60] h-20">
-                        <img src={img} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                        <img src={resolveImageUrl(img)} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                         <button
                           type="button"
+                          disabled={isUploadingRoomImage || isSavingRoom}
                           onClick={() =>
                             setEditingRoom({
                               ...editingRoom,
                               galleryImages: editingRoom.galleryImages.filter((_, i) => i !== idx),
                             })
                           }
-                          className="absolute top-1 right-1 p-1 rounded-full bg-red-900/80 text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                          className="absolute top-1 right-1 p-1 rounded-full bg-red-900/80 text-white opacity-0 group-hover:opacity-100 transition-opacity disabled:hidden"
                           title="Delete image"
                         >
                           <X className="w-3 h-3" />
@@ -4371,18 +4420,29 @@ export const AdminDashboard: React.FC = () => {
               <div className="flex justify-end gap-3 pt-4 border-t border-[#606e60]/60">
                 <button
                   type="button"
+                  disabled={isUploadingRoomImage || isSavingRoom}
                   onClick={() => setEditingRoom(null)}
-                  className="px-4 py-2 rounded-xl bg-[#0e1710] border border-[#606e60] text-[#c3ccc0] text-xs font-bold"
+                  className="px-4 py-2 rounded-xl bg-[#0e1710] border border-[#606e60] text-[#c3ccc0] text-xs font-bold disabled:opacity-50"
                 >
                   Cancel
                 </button>
                 <button
                   type="button"
+                  disabled={isUploadingRoomImage || isSavingRoom}
                   onClick={handleSaveEditedRoom}
-                  className="px-6 py-2 rounded-xl bg-[#ad9e92] hover:bg-[#c3ccc0] text-[#1c2a20] font-bold text-xs uppercase flex items-center gap-1.5"
+                  className="px-6 py-2 rounded-xl bg-[#ad9e92] hover:bg-[#c3ccc0] text-[#1c2a20] font-bold text-xs uppercase flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
                 >
-                  <Save className="w-4 h-4" />
-                  <span>Update Room Details</span>
+                  {isUploadingRoomImage || isSavingRoom ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>{isUploadingRoomImage ? 'Uploading Image...' : 'Saving Details...'}</span>
+                    </>
+                  ) : (
+                    <>
+                      <Save className="w-4 h-4" />
+                      <span>Update Room Details</span>
+                    </>
+                  )}
                 </button>
               </div>
             </div>
@@ -4510,8 +4570,9 @@ export const AdminDashboard: React.FC = () => {
                   <input
                     type="file"
                     accept="image/*"
+                    disabled={isUploadingRoomImage || isSavingRoom}
                     onChange={(e) => handleFileUploadRoomFeatured(e, false)}
-                    className="text-xs text-[#c3ccc0] file:mr-2 file:py-1 file:px-2.5 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-[#ad9e92] file:text-[#1c2a20] cursor-pointer"
+                    className="text-xs text-[#c3ccc0] file:mr-2 file:py-1 file:px-2.5 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-[#ad9e92] file:text-[#1c2a20] cursor-pointer disabled:opacity-50"
                   />
                 </div>
               </div>
@@ -4519,18 +4580,29 @@ export const AdminDashboard: React.FC = () => {
               <div className="flex justify-end gap-3 pt-4 border-t border-[#606e60]/60">
                 <button
                   type="button"
+                  disabled={isUploadingRoomImage || isSavingRoom}
                   onClick={() => setIsAddingRoom(false)}
-                  className="px-4 py-2 rounded-xl bg-[#0e1710] border border-[#606e60] text-[#c3ccc0] text-xs font-bold"
+                  className="px-4 py-2 rounded-xl bg-[#0e1710] border border-[#606e60] text-[#c3ccc0] text-xs font-bold disabled:opacity-50"
                 >
                   Cancel
                 </button>
                 <button
                   type="button"
+                  disabled={isUploadingRoomImage || isSavingRoom}
                   onClick={handleCreateRoom}
-                  className="px-6 py-2 rounded-xl bg-[#ad9e92] hover:bg-[#c3ccc0] text-[#1c2a20] font-bold text-xs uppercase flex items-center gap-1.5"
+                  className="px-6 py-2 rounded-xl bg-[#ad9e92] hover:bg-[#c3ccc0] text-[#1c2a20] font-bold text-xs uppercase flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
                 >
-                  <Plus className="w-4 h-4" />
-                  <span>Save Accommodation</span>
+                  {isUploadingRoomImage || isSavingRoom ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>{isUploadingRoomImage ? 'Uploading Image...' : 'Saving...'}</span>
+                    </>
+                  ) : (
+                    <>
+                      <Plus className="w-4 h-4" />
+                      <span>Save Accommodation</span>
+                    </>
+                  )}
                 </button>
               </div>
             </div>

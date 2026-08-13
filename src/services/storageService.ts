@@ -12,14 +12,12 @@ export async function uploadImageToFirebaseStorage(
 
     const snapshot = await uploadBytes(storageRef, file);
     const downloadUrl = await getDownloadURL(snapshot.ref);
+    if (!downloadUrl) {
+      throw new Error('Firebase Storage returned an empty download URL.');
+    }
     return downloadUrl;
   } catch (error) {
-    console.warn('Firebase Storage upload failed or offline, falling back to FileReader Data URL:', error);
-    return new Promise<string>((resolve) => {
-      const reader = new FileReader();
-      reader.onload = (e) => resolve((e.target?.result as string) || '');
-      reader.onerror = () => resolve('');
-      reader.readAsDataURL(file);
-    });
+    console.error('Firebase Storage upload failed:', error);
+    throw error;
   }
 }
