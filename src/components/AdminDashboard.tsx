@@ -1,10 +1,14 @@
 import React, { useState, useRef } from 'react';
 import { useResort } from '../context/ResortContext';
-import { BookingStatus, Room, Package, PaymentSettings, ResortInfo, ResortDesignAssets, SectionId, Booking, NotificationLog } from '../types';
+import { BookingStatus, Room, Package, PaymentSettings, ResortInfo, ResortDesignAssets, SectionId, Booking, NotificationLog, AdminUser, AdminUserRole, AdminUserPermissions } from '../types';
 import { formatNotificationMessage } from '../data/resortData';
 import { downloadVoucher } from '../utils/voucher';
 import {
   ShieldCheck,
+  Shield,
+  UserPlus,
+  UserCheck,
+  UserX,
   Lock,
   Search,
   Filter,
@@ -56,6 +60,8 @@ import {
   Copy,
   CheckCircle,
   Maximize2,
+  Database,
+  RefreshCw,
 } from 'lucide-react';
 
 export const AdminDashboard: React.FC = () => {
@@ -90,10 +96,67 @@ export const AdminDashboard: React.FC = () => {
     markThreadReadByOwner,
     deleteChatThread,
     unreadChatCountOwner,
+    adminUsers,
+    currentAdminUser,
+    setCurrentAdminUser,
+    addAdminUser,
+    updateAdminUser,
+    deleteAdminUser,
+    resetAdminUserPassword,
+    toggleAdminUserStatus,
+    authenticateAdminUser,
+    syncAllDataToFirebase,
   } = useResort();
 
-  const [pinInput, setPinInput] = useState('');
-  const [adminTab, setAdminTab] = useState<'bookings' | 'chat' | 'rooms' | 'packages' | 'builder' | 'system' | 'payments' | 'notifications'>('bookings');
+  const [usernameInput, setUsernameInput] = useState('');
+  const [passwordInput, setPasswordInput] = useState('');
+  const [loginError, setLoginError] = useState<string | null>(null);
+
+  const [adminTab, setAdminTab] = useState<'bookings' | 'chat' | 'rooms' | 'packages' | 'builder' | 'system' | 'payments' | 'notifications' | 'users'>('bookings');
+
+  // USER MANAGEMENT & SUPER ADMIN STATE
+  const [userSearchQuery, setUserSearchQuery] = useState('');
+  const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false);
+  const [newUserData, setNewUserData] = useState<{
+    username: string;
+    password: string;
+    fullName: string;
+    email: string;
+    phone: string;
+    role: AdminUserRole;
+    permissions: AdminUserPermissions;
+  }>({
+    username: '',
+    password: '',
+    fullName: '',
+    email: '',
+    phone: '',
+    role: 'resort_manager',
+    permissions: {
+      manageBookings: true,
+      manageChat: true,
+      manageRoomsAndPackages: true,
+      manageWebsiteAndAssets: true,
+      managePaymentsAndNotifications: true,
+      manageUsers: false,
+    },
+  });
+
+  const [isChangePasswordModalOpen, setIsChangePasswordModalOpen] = useState(false);
+  const [userForPasswordReset, setUserForPasswordReset] = useState<AdminUser | null>(null);
+  const [newPasswordInput, setNewPasswordInput] = useState('');
+  const [confirmPasswordInput, setConfirmPasswordInput] = useState('');
+
+  const [isEditPermissionsModalOpen, setIsEditPermissionsModalOpen] = useState(false);
+  const [userForPermissionsEdit, setUserForPermissionsEdit] = useState<AdminUser | null>(null);
+  const [editingPermissions, setEditingPermissions] = useState<AdminUserPermissions>({
+    manageBookings: true,
+    manageChat: true,
+    manageRoomsAndPackages: true,
+    manageWebsiteAndAssets: true,
+    managePaymentsAndNotifications: true,
+    manageUsers: false,
+  });
 
   // Live Chat Admin State
   const [selectedAdminThreadId, setSelectedAdminThreadId] = useState<string | null>(null);
@@ -199,9 +262,15 @@ export const AdminDashboard: React.FC = () => {
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    if (pinInput === 'admin123' || pinInput === 'admin' || pinInput.length > 0) {
+    setLoginError(null);
+
+    const user = authenticateAdminUser(usernameInput, passwordInput);
+    if (user) {
       setIsAdminLoggedIn(true);
-      showToast('Authenticated as Resort Administrator.', 'success');
+      showToast(`Authenticated as ${user.fullName} (${user.role.replace('_', ' ').toUpperCase()}).`, 'success');
+    } else {
+      setLoginError('Invalid username or password. Access denied.');
+      setPasswordInput('');
     }
   };
 
@@ -209,37 +278,58 @@ export const AdminDashboard: React.FC = () => {
     return (
       <div className="py-20 px-4 bg-[#1c2a20] text-[#ebe5de] flex items-center justify-center min-h-[60vh]">
         <div className="bg-[#132016] border border-[#606e60] rounded-3xl max-w-md w-full p-8 shadow-2xl text-center space-y-6">
-          <div className="w-16 h-16 rounded-2xl bg-[#1c2a20] border border-[#606e60] flex items-center justify-center text-[#ad9e92] mx-auto shadow-xl">
-            <Key className="w-8 h-8" />
+          <div className="w-16 h-16 rounded-2xl bg-[#1c2a20] border border-[#606e60] flex items-center justify-center text-emerald-400 mx-auto shadow-xl">
+            <Lock className="w-8 h-8" />
           </div>
 
           <div>
-            <h2 className="text-2xl font-bold font-serif text-[#ebe5de]">Resort Owner Portal</h2>
-            <p className="text-xs text-[#c3ccc0] mt-1">Enter your admin security PIN to access reservation and resort management controls.</p>
+            <h2 className="text-2xl font-bold font-serif text-[#ebe5de]">Resort Owner & Management Portal</h2>
+            <p className="text-xs text-[#c3ccc0] mt-1">Please enter your authorized username and password to log in.</p>
           </div>
 
-          <form onSubmit={handleLogin} className="space-y-4">
+          {loginError && (
+            <div className="p-3 bg-red-950/80 border border-red-600/80 rounded-xl text-red-200 text-xs font-medium flex items-center gap-2 text-left animate-in fade-in">
+              <XCircle className="w-4 h-4 shrink-0 text-red-400" />
+              <span>{loginError}</span>
+            </div>
+          )}
+
+          <form onSubmit={handleLogin} className="space-y-4 text-left">
             <div>
+              <label className="text-[11px] font-bold uppercase tracking-wider text-[#c3ccc0] block mb-1">
+                Username
+              </label>
+              <input
+                type="text"
+                value={usernameInput}
+                onChange={(e) => setUsernameInput(e.target.value)}
+                placeholder="Enter Username"
+                required
+                className="w-full px-4 py-3 rounded-xl bg-[#0e1710] border border-[#606e60]/60 text-sm text-[#ebe5de] focus:outline-none focus:border-[#ad9e92]"
+              />
+            </div>
+
+            <div>
+              <label className="text-[11px] font-bold uppercase tracking-wider text-[#c3ccc0] block mb-1">
+                Password
+              </label>
               <input
                 type="password"
-                value={pinInput}
-                onChange={(e) => setPinInput(e.target.value)}
-                placeholder="Enter PIN (Default: admin123)"
-                className="w-full px-4 py-3 rounded-xl bg-[#0e1710] border border-[#606e60]/60 text-center font-mono text-lg text-[#ad9e92] focus:outline-none focus:border-[#c3ccc0]"
+                value={passwordInput}
+                onChange={(e) => setPasswordInput(e.target.value)}
+                placeholder="Enter Password"
+                required
+                className="w-full px-4 py-3 rounded-xl bg-[#0e1710] border border-[#606e60]/60 text-sm text-[#ebe5de] focus:outline-none focus:border-[#ad9e92]"
               />
             </div>
 
             <button
               type="submit"
-              className="w-full py-3.5 rounded-xl bg-[#ad9e92] hover:bg-[#c3ccc0] text-[#1c2a20] font-bold text-xs tracking-wider uppercase cursor-pointer transition-colors shadow-lg"
+              className="w-full py-3.5 rounded-xl bg-[#ad9e92] hover:bg-[#c3ccc0] text-[#1c2a20] font-bold text-xs tracking-wider uppercase cursor-pointer transition-colors shadow-lg mt-2"
             >
-              Access Admin Dashboard
+              Sign In to Dashboard
             </button>
           </form>
-
-          <p className="text-[11px] text-[#c3ccc0]/70">
-            For demonstration testing, click submit or type <code className="text-[#ad9e92] font-mono">admin123</code>.
-          </p>
         </div>
       </div>
     );
@@ -530,22 +620,56 @@ export const AdminDashboard: React.FC = () => {
         {/* Top Dashboard Header */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-6 rounded-3xl bg-[#132016] border border-[#606e60] shadow-2xl">
           <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-2xl bg-[#1c2a20] border border-[#606e60] flex items-center justify-center text-[#ad9e92] shadow-md">
+            <div className="w-12 h-12 rounded-2xl bg-[#1c2a20] border border-[#606e60] flex items-center justify-center text-blue-400 shadow-md">
               <ShieldCheck className="w-7 h-7" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold font-serif text-[#ebe5de]">SLTT ESTANCIAS Admin Portal</h1>
-              <p className="text-xs text-[#c3ccc0]">Comprehensive Owner Dashboard • Manage Rooms, Packages, System Details & Payments</p>
+              <div className="flex items-center gap-2">
+                <h1 className="text-2xl font-bold font-serif text-[#ebe5de]">SLTT ESTANCIAS Admin Portal</h1>
+                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-blue-950 text-blue-300 border border-blue-600/80 uppercase">
+                  {currentAdminUser ? currentAdminUser.role.replace('_', ' ') : 'Super Admin'}
+                </span>
+              </div>
+              <p className="text-xs text-[#c3ccc0] mt-0.5">
+                Logged in as <strong className="text-blue-300">{currentAdminUser?.fullName || 'Master Administrator'}</strong> (@{currentAdminUser?.username || 'SLTTESTANCIA_ADMIN'})
+              </p>
             </div>
           </div>
 
-          <button
-            onClick={() => setIsAdminLoggedIn(false)}
-            className="px-4 py-2 rounded-xl bg-[#0e1710] border border-[#606e60]/60 text-[#c3ccc0] hover:text-[#ebe5de] text-xs font-bold flex items-center gap-1.5 cursor-pointer hover:border-[#ad9e92] transition-colors"
-          >
-            <LogOut className="w-4 h-4 text-[#ad9e92]" />
-            <span>Lock Portal</span>
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={() => {
+                if (currentAdminUser) {
+                  setUserForPasswordReset(currentAdminUser);
+                  setNewPasswordInput('');
+                  setConfirmPasswordInput('');
+                  setIsChangePasswordModalOpen(true);
+                } else if (adminUsers.length > 0) {
+                  setUserForPasswordReset(adminUsers[0]);
+                  setNewPasswordInput('');
+                  setConfirmPasswordInput('');
+                  setIsChangePasswordModalOpen(true);
+                }
+              }}
+              className="px-3.5 py-2 rounded-xl bg-[#0e1710] border border-[#606e60]/60 text-blue-400 hover:text-blue-300 text-xs font-bold flex items-center gap-1.5 cursor-pointer hover:border-blue-400 transition-colors"
+              title="Change Password"
+            >
+              <Key className="w-4 h-4" />
+              <span>Change Password</span>
+            </button>
+
+            <button
+              onClick={() => {
+                setIsAdminLoggedIn(false);
+                setCurrentAdminUser(null);
+                showToast('Logged out of Admin Portal.', 'info');
+              }}
+              className="px-4 py-2 rounded-xl bg-[#0e1710] border border-[#606e60]/60 text-[#c3ccc0] hover:text-[#ebe5de] text-xs font-bold flex items-center gap-1.5 cursor-pointer hover:border-red-400 hover:text-red-300 transition-colors"
+            >
+              <LogOut className="w-4 h-4 text-red-400" />
+              <span>Log Out</span>
+            </button>
+          </div>
         </div>
 
         {/* Analytics Summary Metric Cards */}
@@ -589,113 +713,530 @@ export const AdminDashboard: React.FC = () => {
           </div>
         </div>
 
+        {/* List of Agents / Users Section - Displayed directly below SLTT ESTANCIAS Admin Portal header and metric cards */}
+        {(!currentAdminUser || currentAdminUser.permissions.manageUsers || currentAdminUser.role === 'super_admin') && (
+          <div className="bg-[#132016] border border-[#606e60] rounded-3xl p-6 shadow-2xl space-y-6">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-[#606e60]/60 pb-5">
+              <div>
+                <h2 className="text-xl font-bold font-serif text-[#ebe5de] flex items-center gap-2">
+                  <Shield className="w-5 h-5 text-blue-400" />
+                  List of Agents / Users
+                </h2>
+                <p className="text-xs text-[#c3ccc0] mt-0.5">
+                  Manage agent user accounts, assign custom access permissions, reset credentials, and control portal status.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setNewUserData({
+                    username: '',
+                    password: '',
+                    fullName: '',
+                    email: '',
+                    phone: '',
+                    role: 'resort_manager',
+                    permissions: {
+                      manageBookings: true,
+                      manageChat: true,
+                      manageRoomsAndPackages: true,
+                      manageWebsiteAndAssets: true,
+                      managePaymentsAndNotifications: true,
+                      manageUsers: false,
+                    },
+                  });
+                  setIsAddUserModalOpen(true);
+                }}
+                className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs uppercase flex items-center gap-2 cursor-pointer shadow-lg transition-colors shrink-0"
+              >
+                <UserPlus className="w-4 h-4" />
+                <span>Add New Staff Account</span>
+              </button>
+            </div>
+
+            {/* User Role Overview Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="p-4 rounded-2xl bg-[#1c2a20] border border-[#606e60]/60 space-y-1">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-[#c3ccc0]">Total Accounts</span>
+                <p className="text-2xl font-bold text-[#ebe5de] font-serif">{adminUsers.length}</p>
+                <p className="text-[10px] text-blue-400 font-medium">Registered Staff & Admins</p>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-[#1c2a20] border border-[#606e60]/60 space-y-1">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-[#c3ccc0]">Super Administrators</span>
+                <p className="text-2xl font-bold text-blue-400 font-serif">
+                  {adminUsers.filter((u) => u.role === 'super_admin').length}
+                </p>
+                <p className="text-[10px] text-[#c3ccc0]">Full Governance Access</p>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-[#1c2a20] border border-[#606e60]/60 space-y-1">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-[#c3ccc0]">Managers & Staff</span>
+                <p className="text-2xl font-bold text-amber-400 font-serif">
+                  {adminUsers.filter((u) => u.role !== 'super_admin').length}
+                </p>
+                <p className="text-[10px] text-[#c3ccc0]">Operational Role Accounts</p>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-[#1c2a20] border border-[#606e60]/60 space-y-1">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-[#c3ccc0]">Active Users</span>
+                <p className="text-2xl font-bold text-emerald-400 font-serif">
+                  {adminUsers.filter((u) => u.isActive).length} / {adminUsers.length}
+                </p>
+                <p className="text-[10px] text-emerald-400 font-medium">Active Authorized Login Accounts</p>
+              </div>
+            </div>
+
+            {/* Search Bar */}
+            <div className="relative max-w-md">
+              <Search className="w-4 h-4 absolute left-3 top-3 text-[#c3ccc0]" />
+              <input
+                type="text"
+                value={userSearchQuery}
+                onChange={(e) => setUserSearchQuery(e.target.value)}
+                placeholder="Search agents by name, email, phone or role..."
+                className="w-full pl-9 pr-4 py-2.5 rounded-xl bg-[#0e1710] border border-[#606e60]/60 text-xs text-[#ebe5de] focus:outline-none focus:border-blue-400"
+              />
+            </div>
+
+            {/* User Directory Table */}
+            <div className="overflow-x-auto rounded-2xl border border-[#606e60]/60">
+              <table className="w-full text-left text-xs whitespace-nowrap">
+                <thead className="bg-[#0e1710] text-[#c3ccc0] font-bold uppercase text-[10px] tracking-wider border-b border-[#606e60]/60">
+                  <tr>
+                    <th className="p-3.5">Name</th>
+                    <th className="p-3.5">Email ID</th>
+                    <th className="p-3.5">Phone No.</th>
+                    <th className="p-3.5 text-center">Is Admin</th>
+                    <th className="p-3.5 text-center">Is Active</th>
+                    <th className="p-3.5 text-center">Bookings & Receipts</th>
+                    <th className="p-3.5 text-center">Allow Delete</th>
+                    <th className="p-3.5 text-center">Live Chatbox</th>
+                    <th className="p-3.5 text-center">Rooms & Packages</th>
+                    <th className="p-3.5 text-center">Visual Builder</th>
+                    <th className="p-3.5 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#606e60]/40">
+                  {adminUsers
+                    .filter((u) =>
+                      u.fullName.toLowerCase().includes(userSearchQuery.toLowerCase()) ||
+                      u.username.toLowerCase().includes(userSearchQuery.toLowerCase()) ||
+                      u.email.toLowerCase().includes(userSearchQuery.toLowerCase()) ||
+                      (u.phone && u.phone.includes(userSearchQuery)) ||
+                      u.role.toLowerCase().includes(userSearchQuery.toLowerCase())
+                    )
+                    .map((u) => {
+                      const isPrimaryMaster = u.username === 'SLTTESTANCIA_ADMIN';
+                      return (
+                        <tr key={u.id} className="hover:bg-[#1c2a20]/60 transition-colors">
+                          <td className="p-3.5">
+                            <div className="flex items-center gap-3">
+                              <div className="w-9 h-9 rounded-xl bg-[#0e1710] border border-[#606e60] flex items-center justify-center font-bold text-blue-400 text-sm shrink-0">
+                                {u.fullName.charAt(0).toUpperCase()}
+                              </div>
+                              <div>
+                                <div className="font-bold text-[#ebe5de] flex items-center gap-1.5">
+                                  <span>{u.fullName}</span>
+                                  {isPrimaryMaster && (
+                                    <span className="px-1.5 py-0.2 rounded text-[9px] font-black bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                                      PRIMARY MASTER
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="text-[10px] text-[#c3ccc0] font-mono">
+                                  @{u.username}
+                                </div>
+                              </div>
+                            </div>
+                          </td>
+
+                          <td className="p-3.5 font-mono text-[#ebe5de]">
+                            {u.email}
+                          </td>
+
+                          <td className="p-3.5 font-mono text-emerald-300">
+                            {u.phone || '09615993305'}
+                          </td>
+
+                          <td className="p-3.5 text-center">
+                            <span
+                              className={`px-2.5 py-1 rounded-lg text-[10px] font-extrabold uppercase border ${
+                                u.role === 'super_admin'
+                                  ? 'bg-blue-950/80 text-blue-300 border-blue-600/80'
+                                  : u.role === 'resort_manager'
+                                  ? 'bg-amber-950/80 text-amber-300 border-amber-600/80'
+                                  : u.role === 'front_desk'
+                                  ? 'bg-emerald-950/80 text-emerald-300 border-emerald-600/80'
+                                  : 'bg-purple-950/80 text-purple-300 border-purple-600/80'
+                              }`}
+                            >
+                              {u.role === 'super_admin'
+                                ? 'Super Admin'
+                                : u.role === 'resort_manager'
+                                ? 'Resort Manager'
+                                : u.role === 'front_desk'
+                                ? 'Front Desk'
+                                : 'Content Editor'}
+                            </span>
+                          </td>
+
+                          {/* 1. IS ACTIVE SWITCH */}
+                          <td className="p-3.5 text-center">
+                            {isPrimaryMaster ? (
+                              <span className="text-[10px] text-emerald-400 font-bold">Always Active</span>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => toggleAdminUserStatus(u.id)}
+                                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer ${
+                                  u.isActive ? 'bg-cyan-500' : 'bg-gray-700'
+                                }`}
+                                title={u.isActive ? 'Deactivate User Account' : 'Activate User Account'}
+                              >
+                                <span
+                                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                                    u.isActive ? 'translate-x-6' : 'translate-x-1'
+                                  }`}
+                                />
+                              </button>
+                            )}
+                          </td>
+
+                          {/* 2. BOOKINGS & RECEIPTS SWITCH */}
+                          <td className="p-3.5 text-center">
+                            {isPrimaryMaster ? (
+                              <span className="text-[10px] text-cyan-400 font-bold">Enabled</span>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  updateAdminUser(u.id, {
+                                    permissions: {
+                                      ...u.permissions,
+                                      manageBookings: !u.permissions.manageBookings,
+                                    },
+                                  })
+                                }
+                                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer ${
+                                  u.permissions.manageBookings ? 'bg-cyan-500' : 'bg-gray-700'
+                                }`}
+                                title="Toggle Bookings & Receipts Access"
+                              >
+                                <span
+                                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                                    u.permissions.manageBookings ? 'translate-x-6' : 'translate-x-1'
+                                  }`}
+                                />
+                              </button>
+                            )}
+                          </td>
+
+                          {/* 3. ALLOW DELETE BOOKINGS SWITCH */}
+                          <td className="p-3.5 text-center">
+                            {isPrimaryMaster ? (
+                              <span className="text-[10px] text-cyan-400 font-bold">Allowed</span>
+                            ) : !u.permissions.manageBookings ? (
+                              <span className="text-[10px] text-gray-500">Disabled</span>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  updateAdminUser(u.id, {
+                                    permissions: {
+                                      ...u.permissions,
+                                      canDeleteBookings: !(u.permissions.canDeleteBookings !== false),
+                                    },
+                                  })
+                                }
+                                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer ${
+                                  u.permissions.canDeleteBookings !== false ? 'bg-cyan-500' : 'bg-amber-600'
+                                }`}
+                                title={
+                                  u.permissions.canDeleteBookings !== false
+                                    ? 'Delete Allowed (Click to set View Only Mode)'
+                                    : 'View Only Mode (Click to allow Deleting Bookings)'
+                                }
+                              >
+                                <span
+                                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                                    u.permissions.canDeleteBookings !== false ? 'translate-x-6' : 'translate-x-1'
+                                  }`}
+                                />
+                              </button>
+                            )}
+                          </td>
+
+                          {/* 4. LIVE CHATBOX SWITCH */}
+                          <td className="p-3.5 text-center">
+                            {isPrimaryMaster ? (
+                              <span className="text-[10px] text-cyan-400 font-bold">Enabled</span>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  updateAdminUser(u.id, {
+                                    permissions: {
+                                      ...u.permissions,
+                                      manageChat: !u.permissions.manageChat,
+                                    },
+                                  })
+                                }
+                                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer ${
+                                  u.permissions.manageChat ? 'bg-cyan-500' : 'bg-gray-700'
+                                }`}
+                                title="Toggle Live Chatbox Access"
+                              >
+                                <span
+                                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                                    u.permissions.manageChat ? 'translate-x-6' : 'translate-x-1'
+                                  }`}
+                                />
+                              </button>
+                            )}
+                          </td>
+
+                          {/* 5. ROOMS & PACKAGES SWITCH */}
+                          <td className="p-3.5 text-center">
+                            {isPrimaryMaster ? (
+                              <span className="text-[10px] text-cyan-400 font-bold">Enabled</span>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  updateAdminUser(u.id, {
+                                    permissions: {
+                                      ...u.permissions,
+                                      manageRoomsAndPackages: !u.permissions.manageRoomsAndPackages,
+                                    },
+                                  })
+                                }
+                                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer ${
+                                  u.permissions.manageRoomsAndPackages ? 'bg-cyan-500' : 'bg-gray-700'
+                                }`}
+                                title="Toggle Rooms & Packages Access"
+                              >
+                                <span
+                                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                                    u.permissions.manageRoomsAndPackages ? 'translate-x-6' : 'translate-x-1'
+                                  }`}
+                                />
+                              </button>
+                            )}
+                          </td>
+
+                          {/* 6. VISUAL BUILDER SWITCH */}
+                          <td className="p-3.5 text-center">
+                            {isPrimaryMaster ? (
+                              <span className="text-[10px] text-cyan-400 font-bold">Enabled</span>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  updateAdminUser(u.id, {
+                                    permissions: {
+                                      ...u.permissions,
+                                      manageWebsiteAndAssets: !u.permissions.manageWebsiteAndAssets,
+                                    },
+                                  })
+                                }
+                                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer ${
+                                  u.permissions.manageWebsiteAndAssets ? 'bg-cyan-500' : 'bg-gray-700'
+                                }`}
+                                title="Toggle Visual Builder Access"
+                              >
+                                <span
+                                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                                    u.permissions.manageWebsiteAndAssets ? 'translate-x-6' : 'translate-x-1'
+                                  }`}
+                                />
+                              </button>
+                            )}
+                          </td>
+
+                          {/* ACTIONS: RESET PASSWORD & DELETE */}
+                          <td className="p-3.5 text-right space-x-1.5">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setUserForPasswordReset(u);
+                                setNewPasswordInput('');
+                                setConfirmPasswordInput('');
+                                setIsChangePasswordModalOpen(true);
+                              }}
+                              className="p-1.5 rounded-lg bg-[#0e1710] border border-[#606e60] text-blue-400 hover:text-blue-300 hover:border-blue-400 transition-colors"
+                              title="Reset User Password"
+                            >
+                              <Key className="w-3.5 h-3.5" />
+                            </button>
+
+                            {!isPrimaryMaster && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (confirm(`Are you sure you want to delete user account @${u.username}?`)) {
+                                    deleteAdminUser(u.id);
+                                  }
+                                }}
+                                className="p-1.5 rounded-lg bg-[#0e1710] border border-[#606e60] text-red-400 hover:text-red-300 hover:border-red-500 transition-colors"
+                                title="Delete User Account"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
         {/* Navigation Tab Switcher */}
         <div className="flex border-b border-[#606e60]/40 overflow-x-auto gap-2 scrollbar-none pb-1">
-          <button
-            onClick={() => setAdminTab('bookings')}
-            className={`py-3 px-5 text-xs font-bold uppercase tracking-wider transition-all border-b-2 whitespace-nowrap cursor-pointer flex items-center gap-2 ${
-              adminTab === 'bookings'
-                ? 'border-[#ad9e92] text-[#ad9e92]'
-                : 'border-transparent text-[#c3ccc0] hover:text-[#ebe5de]'
-            }`}
-          >
-            <Calendar className="w-4 h-4" />
-            <span>Bookings & Receipts ({bookings.length})</span>
-          </button>
-
-          <button
-            onClick={() => setAdminTab('chat')}
-            className={`py-3 px-5 text-xs font-bold uppercase tracking-wider transition-all border-b-2 whitespace-nowrap cursor-pointer flex items-center gap-2 relative ${
-              adminTab === 'chat'
-                ? 'border-emerald-400 text-emerald-300 bg-emerald-950/30 rounded-t-xl'
-                : 'border-transparent text-[#c3ccc0] hover:text-[#ebe5de]'
-            }`}
-          >
-            <MessageSquare className="w-4 h-4 text-emerald-400" />
-            <span>Live Chat Inbox</span>
-            {unreadChatCountOwner > 0 ? (
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-500 text-[#132016] animate-pulse">
-                {unreadChatCountOwner} NEW
+          {(!currentAdminUser || currentAdminUser.permissions.manageBookings) && (
+            <button
+              onClick={() => setAdminTab('bookings')}
+              className={`py-3 px-5 text-xs font-bold uppercase tracking-wider transition-all border-b-2 whitespace-nowrap cursor-pointer flex items-center gap-2 ${
+                adminTab === 'bookings'
+                  ? 'border-[#ad9e92] text-[#ad9e92]'
+                  : 'border-transparent text-[#c3ccc0] hover:text-[#ebe5de]'
+              }`}
+            >
+              <Calendar className="w-4 h-4" />
+              <span>
+                Bookings & Receipts ({bookings.length})
+                {currentAdminUser?.permissions.canDeleteBookings === false && (
+                  <span className="ml-1 px-1.5 py-0.5 rounded text-[9px] bg-amber-950 text-amber-300 border border-amber-600/50">
+                    View Only
+                  </span>
+                )}
               </span>
-            ) : (
-              <span className="text-[10px] text-[#ad9e92]">({chatThreads.length})</span>
-            )}
-          </button>
+            </button>
+          )}
 
-          <button
-            onClick={() => setAdminTab('rooms')}
-            className={`py-3 px-5 text-xs font-bold uppercase tracking-wider transition-all border-b-2 whitespace-nowrap cursor-pointer flex items-center gap-2 ${
-              adminTab === 'rooms'
-                ? 'border-[#ad9e92] text-[#ad9e92]'
-                : 'border-transparent text-[#c3ccc0] hover:text-[#ebe5de]'
-            }`}
-          >
-            <BedDouble className="w-4 h-4" />
-            <span>Manage Rooms & Images ({rooms.length})</span>
-          </button>
+          {(!currentAdminUser || currentAdminUser.permissions.manageChat) && (
+            <button
+              onClick={() => setAdminTab('chat')}
+              className={`py-3 px-5 text-xs font-bold uppercase tracking-wider transition-all border-b-2 whitespace-nowrap cursor-pointer flex items-center gap-2 relative ${
+                adminTab === 'chat'
+                  ? 'border-emerald-400 text-emerald-300 bg-emerald-950/30 rounded-t-xl'
+                  : 'border-transparent text-[#c3ccc0] hover:text-[#ebe5de]'
+              }`}
+            >
+              <MessageSquare className="w-4 h-4 text-emerald-400" />
+              <span>Live Chat Inbox</span>
+              {unreadChatCountOwner > 0 ? (
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-500 text-[#132016] animate-pulse">
+                  {unreadChatCountOwner} NEW
+                </span>
+              ) : (
+                <span className="text-[10px] text-[#ad9e92]">({chatThreads.length})</span>
+              )}
+            </button>
+          )}
 
-          <button
-            onClick={() => setAdminTab('packages')}
-            className={`py-3 px-5 text-xs font-bold uppercase tracking-wider transition-all border-b-2 whitespace-nowrap cursor-pointer flex items-center gap-2 ${
-              adminTab === 'packages'
-                ? 'border-[#ad9e92] text-[#ad9e92]'
-                : 'border-transparent text-[#c3ccc0] hover:text-[#ebe5de]'
-            }`}
-          >
-            <Sparkles className="w-4 h-4" />
-            <span>Resort Packages ({packages.length})</span>
-          </button>
+          {(!currentAdminUser || currentAdminUser.permissions.manageRoomsAndPackages) && (
+            <>
+              <button
+                onClick={() => setAdminTab('rooms')}
+                className={`py-3 px-5 text-xs font-bold uppercase tracking-wider transition-all border-b-2 whitespace-nowrap cursor-pointer flex items-center gap-2 ${
+                  adminTab === 'rooms'
+                    ? 'border-[#ad9e92] text-[#ad9e92]'
+                    : 'border-transparent text-[#c3ccc0] hover:text-[#ebe5de]'
+                }`}
+              >
+                <BedDouble className="w-4 h-4" />
+                <span>Manage Rooms & Images ({rooms.length})</span>
+              </button>
 
-          <button
-            onClick={() => setAdminTab('builder')}
-            className={`py-3 px-5 text-xs font-bold uppercase tracking-wider transition-all border-b-2 whitespace-nowrap cursor-pointer flex items-center gap-2 ${
-              adminTab === 'builder'
-                ? 'border-[#ad9e92] text-[#ad9e92] bg-[#ad9e92]/10 rounded-t-xl'
-                : 'border-transparent text-[#c3ccc0] hover:text-[#ebe5de]'
-            }`}
-          >
-            <Layout className="w-4 h-4 text-[#ad9e92]" />
-            <span>Visual Builder & Drag-Drop Layout</span>
-          </button>
+              <button
+                onClick={() => setAdminTab('packages')}
+                className={`py-3 px-5 text-xs font-bold uppercase tracking-wider transition-all border-b-2 whitespace-nowrap cursor-pointer flex items-center gap-2 ${
+                  adminTab === 'packages'
+                    ? 'border-[#ad9e92] text-[#ad9e92]'
+                    : 'border-transparent text-[#c3ccc0] hover:text-[#ebe5de]'
+                }`}
+              >
+                <Sparkles className="w-4 h-4" />
+                <span>Resort Packages ({packages.length})</span>
+              </button>
+            </>
+          )}
 
-          <button
-            onClick={() => setAdminTab('system')}
-            className={`py-3 px-5 text-xs font-bold uppercase tracking-wider transition-all border-b-2 whitespace-nowrap cursor-pointer flex items-center gap-2 ${
-              adminTab === 'system'
-                ? 'border-[#ad9e92] text-[#ad9e92]'
-                : 'border-transparent text-[#c3ccc0] hover:text-[#ebe5de]'
-            }`}
-          >
-            <Sliders className="w-4 h-4" />
-            <span>Overall System Details</span>
-          </button>
+          {(!currentAdminUser || currentAdminUser.permissions.manageWebsiteAndAssets) && (
+            <button
+              onClick={() => setAdminTab('builder')}
+              className={`py-3 px-5 text-xs font-bold uppercase tracking-wider transition-all border-b-2 whitespace-nowrap cursor-pointer flex items-center gap-2 ${
+                adminTab === 'builder'
+                  ? 'border-[#ad9e92] text-[#ad9e92] bg-[#ad9e92]/10 rounded-t-xl'
+                  : 'border-transparent text-[#c3ccc0] hover:text-[#ebe5de]'
+              }`}
+            >
+              <Layout className="w-4 h-4 text-[#ad9e92]" />
+              <span>Visual Builder & Drag-Drop Layout</span>
+            </button>
+          )}
 
-          <button
-            onClick={() => setAdminTab('payments')}
-            className={`py-3 px-5 text-xs font-bold uppercase tracking-wider transition-all border-b-2 whitespace-nowrap cursor-pointer flex items-center gap-2 ${
-              adminTab === 'payments'
-                ? 'border-[#ad9e92] text-[#ad9e92]'
-                : 'border-transparent text-[#c3ccc0] hover:text-[#ebe5de]'
-            }`}
-          >
-            <Smartphone className="w-4 h-4" />
-            <span>Payment Options & Banks</span>
-          </button>
+          {(!currentAdminUser || currentAdminUser.permissions.managePaymentsAndNotifications) && (
+            <>
+              <button
+                onClick={() => setAdminTab('system')}
+                className={`py-3 px-5 text-xs font-bold uppercase tracking-wider transition-all border-b-2 whitespace-nowrap cursor-pointer flex items-center gap-2 ${
+                  adminTab === 'system'
+                    ? 'border-[#ad9e92] text-[#ad9e92]'
+                    : 'border-transparent text-[#c3ccc0] hover:text-[#ebe5de]'
+                }`}
+              >
+                <Sliders className="w-4 h-4" />
+                <span>Overall System Details</span>
+              </button>
 
-          <button
-            onClick={() => {
-              setNotifForm(notificationTemplates);
-              setAdminTab('notifications');
-            }}
-            className={`py-3 px-5 text-xs font-bold uppercase tracking-wider transition-all border-b-2 whitespace-nowrap cursor-pointer flex items-center gap-2 ${
-              adminTab === 'notifications'
-                ? 'border-amber-400 text-amber-300 bg-amber-950/20 rounded-t-xl'
-                : 'border-transparent text-[#c3ccc0] hover:text-[#ebe5de]'
-            }`}
-          >
-            <MessageSquare className="w-4 h-4 text-amber-400" />
-            <span>Email Notifications</span>
-          </button>
+              <button
+                onClick={() => setAdminTab('payments')}
+                className={`py-3 px-5 text-xs font-bold uppercase tracking-wider transition-all border-b-2 whitespace-nowrap cursor-pointer flex items-center gap-2 ${
+                  adminTab === 'payments'
+                    ? 'border-[#ad9e92] text-[#ad9e92]'
+                    : 'border-transparent text-[#c3ccc0] hover:text-[#ebe5de]'
+                }`}
+              >
+                <Smartphone className="w-4 h-4" />
+                <span>Payment Options & Banks</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  setNotifForm(notificationTemplates);
+                  setAdminTab('notifications');
+                }}
+                className={`py-3 px-5 text-xs font-bold uppercase tracking-wider transition-all border-b-2 whitespace-nowrap cursor-pointer flex items-center gap-2 ${
+                  adminTab === 'notifications'
+                    ? 'border-amber-400 text-amber-300 bg-amber-950/20 rounded-t-xl'
+                    : 'border-transparent text-[#c3ccc0] hover:text-[#ebe5de]'
+                }`}
+              >
+                <MessageSquare className="w-4 h-4 text-amber-400" />
+                <span>Email Notifications</span>
+              </button>
+            </>
+          )}
+
+          {(!currentAdminUser || currentAdminUser.permissions.manageUsers) && (
+            <button
+              onClick={() => setAdminTab('users')}
+              className={`py-3 px-5 text-xs font-bold uppercase tracking-wider transition-all border-b-2 whitespace-nowrap cursor-pointer flex items-center gap-2 ${
+                adminTab === 'users'
+                  ? 'border-blue-400 text-blue-300 bg-blue-950/30 rounded-t-xl'
+                  : 'border-transparent text-[#c3ccc0] hover:text-[#ebe5de]'
+              }`}
+            >
+              <Shield className="w-4 h-4 text-blue-400" />
+              <span>User & Access Control ({adminUsers.length})</span>
+            </button>
+          )}
         </div>
 
         {/* 1. BOOKINGS & RECEIPTS TAB */}
@@ -826,13 +1367,27 @@ export const AdminDashboard: React.FC = () => {
                             <span>Notify</span>
                           </button>
 
-                          <button
-                            onClick={() => deleteBooking(b.id)}
-                            className="p-1.5 rounded bg-[#0e1710] border border-[#606e60] text-[#ad9e92] hover:text-[#ebe5de] cursor-pointer"
-                            title="Delete Booking"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                          {currentAdminUser?.permissions.canDeleteBookings !== false ? (
+                            <button
+                              onClick={() => {
+                                if (confirm(`Are you sure you want to delete booking ${b.referenceNumber}?`)) {
+                                  deleteBooking(b.id);
+                                }
+                              }}
+                              className="p-1.5 rounded bg-[#0e1710] border border-[#606e60] text-[#ad9e92] hover:text-red-400 cursor-pointer"
+                              title="Delete Booking"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          ) : (
+                            <button
+                              disabled
+                              className="p-1.5 rounded bg-[#0e1710]/40 border border-[#606e60]/20 text-[#ad9e92]/30 cursor-not-allowed"
+                              title="Deleting bookings is restricted for your account (View Only Mode)"
+                            >
+                              <Lock className="w-3.5 h-3.5" />
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -2668,6 +3223,991 @@ export const AdminDashboard: React.FC = () => {
                     )}
                   </tbody>
                 </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 8. SUPER ADMIN & USER ACCESS MANAGEMENT TAB */}
+        {adminTab === 'users' && (
+          <div className="space-y-6">
+            {/* FIREBASE CLOUD DATABASE GOVERNANCE CARD */}
+            <div className="bg-[#132016] border border-amber-600/40 rounded-3xl p-6 shadow-2xl space-y-4 relative overflow-hidden">
+              <div className="absolute top-0 right-0 p-8 opacity-10 pointer-events-none">
+                <Database className="w-48 h-48 text-amber-400" />
+              </div>
+
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-[#606e60]/60 pb-4">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-emerald-950 text-emerald-300 border border-emerald-600/80">
+                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                      Firebase Firestore Connected
+                    </span>
+                    <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-amber-950/80 text-amber-300 border border-amber-600/60">
+                      ai-studio-slttestanciasres-e5efd282
+                    </span>
+                  </div>
+                  <h3 className="text-lg font-bold font-serif text-[#ebe5de] flex items-center gap-2">
+                    <Database className="w-5 h-5 text-amber-400" />
+                    Firebase Cloud Database & Sync Console
+                  </h3>
+                  <p className="text-xs text-[#c3ccc0]">
+                    Connected Account: <strong className="text-[#ebe5de]">contact@slttb2btravelsolutions.com</strong> • Resort System Email: <strong className="text-emerald-300">reservations@slttestanciasresort.com</strong>
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={async () => {
+                    await syncAllDataToFirebase();
+                  }}
+                  className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 text-white font-bold text-xs uppercase flex items-center gap-2 cursor-pointer shadow-lg transition-all shrink-0"
+                >
+                  <RefreshCw className="w-4 h-4 animate-spin-slow" />
+                  <span>Sync All Collections to Firebase</span>
+                </button>
+              </div>
+
+              {/* Collections Status Grid */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
+                <div className="p-3 rounded-xl bg-[#0e1710] border border-[#606e60]/50 text-center space-y-0.5">
+                  <span className="text-[9px] font-bold uppercase tracking-wider text-[#c3ccc0] block">admin_users</span>
+                  <span className="text-lg font-bold text-blue-400 font-serif">{adminUsers.length}</span>
+                  <span className="text-[9px] text-[#c3ccc0] block">Synced Users</span>
+                </div>
+
+                <div className="p-3 rounded-xl bg-[#0e1710] border border-[#606e60]/50 text-center space-y-0.5">
+                  <span className="text-[9px] font-bold uppercase tracking-wider text-[#c3ccc0] block">bookings</span>
+                  <span className="text-lg font-bold text-emerald-400 font-serif">{bookings.length}</span>
+                  <span className="text-[9px] text-[#c3ccc0] block">Active Bookings</span>
+                </div>
+
+                <div className="p-3 rounded-xl bg-[#0e1710] border border-[#606e60]/50 text-center space-y-0.5">
+                  <span className="text-[9px] font-bold uppercase tracking-wider text-[#c3ccc0] block">rooms</span>
+                  <span className="text-lg font-bold text-amber-400 font-serif">{rooms.length}</span>
+                  <span className="text-[9px] text-[#c3ccc0] block">Room Units</span>
+                </div>
+
+                <div className="p-3 rounded-xl bg-[#0e1710] border border-[#606e60]/50 text-center space-y-0.5">
+                  <span className="text-[9px] font-bold uppercase tracking-wider text-[#c3ccc0] block">packages</span>
+                  <span className="text-lg font-bold text-purple-400 font-serif">{packages.length}</span>
+                  <span className="text-[9px] text-[#c3ccc0] block">Tour Packages</span>
+                </div>
+
+                <div className="p-3 rounded-xl bg-[#0e1710] border border-[#606e60]/50 text-center space-y-0.5">
+                  <span className="text-[9px] font-bold uppercase tracking-wider text-[#c3ccc0] block">chat_threads</span>
+                  <span className="text-lg font-bold text-teal-400 font-serif">{chatThreads.length}</span>
+                  <span className="text-[9px] text-[#c3ccc0] block">Guest Inquiries</span>
+                </div>
+
+                <div className="p-3 rounded-xl bg-[#0e1710] border border-[#606e60]/50 text-center space-y-0.5">
+                  <span className="text-[9px] font-bold uppercase tracking-wider text-[#c3ccc0] block">settings</span>
+                  <span className="text-lg font-bold text-emerald-400 font-serif">2</span>
+                  <span className="text-[9px] text-[#c3ccc0] block">Info & Payments</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Header & Stats Banner */}
+            <div className="bg-[#132016] border border-[#606e60] rounded-3xl p-6 shadow-2xl space-y-6">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-[#606e60]/60 pb-5">
+                <div>
+                  <h2 className="text-xl font-bold font-serif text-[#ebe5de] flex items-center gap-2">
+                    <Shield className="w-5 h-5 text-blue-400" />
+                    List of Agents / Users
+                  </h2>
+                  <p className="text-xs text-[#c3ccc0] mt-0.5">
+                    Manage agent user accounts, assign custom access permissions, reset credentials, and control portal status.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setNewUserData({
+                      username: '',
+                      password: '',
+                      fullName: '',
+                      email: '',
+                      phone: '',
+                      role: 'resort_manager',
+                      permissions: {
+                        manageBookings: true,
+                        manageChat: true,
+                        manageRoomsAndPackages: true,
+                        manageWebsiteAndAssets: true,
+                        managePaymentsAndNotifications: true,
+                        manageUsers: false,
+                      },
+                    });
+                    setIsAddUserModalOpen(true);
+                  }}
+                  className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs uppercase flex items-center gap-2 cursor-pointer shadow-lg transition-colors shrink-0"
+                >
+                  <UserPlus className="w-4 h-4" />
+                  <span>Add New Staff Account</span>
+                </button>
+              </div>
+
+              {/* User Role Overview Cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="p-4 rounded-2xl bg-[#1c2a20] border border-[#606e60]/60 space-y-1">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-[#c3ccc0]">Total Accounts</span>
+                  <p className="text-2xl font-bold text-[#ebe5de] font-serif">{adminUsers.length}</p>
+                  <p className="text-[10px] text-blue-400 font-medium">Registered Staff & Admins</p>
+                </div>
+
+                <div className="p-4 rounded-2xl bg-[#1c2a20] border border-[#606e60]/60 space-y-1">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-[#c3ccc0]">Super Administrators</span>
+                  <p className="text-2xl font-bold text-blue-400 font-serif">
+                    {adminUsers.filter((u) => u.role === 'super_admin').length}
+                  </p>
+                  <p className="text-[10px] text-[#c3ccc0]">Full Governance Access</p>
+                </div>
+
+                <div className="p-4 rounded-2xl bg-[#1c2a20] border border-[#606e60]/60 space-y-1">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-[#c3ccc0]">Managers & Staff</span>
+                  <p className="text-2xl font-bold text-amber-400 font-serif">
+                    {adminUsers.filter((u) => u.role !== 'super_admin').length}
+                  </p>
+                  <p className="text-[10px] text-[#c3ccc0]">Operational Role Accounts</p>
+                </div>
+
+                <div className="p-4 rounded-2xl bg-[#1c2a20] border border-[#606e60]/60 space-y-1">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-[#c3ccc0]">Active Users</span>
+                  <p className="text-2xl font-bold text-emerald-400 font-serif">
+                    {adminUsers.filter((u) => u.isActive).length} / {adminUsers.length}
+                  </p>
+                  <p className="text-[10px] text-emerald-400 font-medium">Active Authorized Login Accounts</p>
+                </div>
+              </div>
+
+              {/* Search Bar */}
+              <div className="relative max-w-md">
+                <Search className="w-4 h-4 absolute left-3 top-3 text-[#c3ccc0]" />
+                <input
+                  type="text"
+                  value={userSearchQuery}
+                  onChange={(e) => setUserSearchQuery(e.target.value)}
+                  placeholder="Search agents by name, email, phone or role..."
+                  className="w-full pl-9 pr-4 py-2.5 rounded-xl bg-[#0e1710] border border-[#606e60]/60 text-xs text-[#ebe5de] focus:outline-none focus:border-blue-400"
+                />
+              </div>
+
+              {/* User Directory Table */}
+              <div className="overflow-x-auto rounded-2xl border border-[#606e60]/60">
+                <table className="w-full text-left text-xs whitespace-nowrap">
+                  <thead className="bg-[#0e1710] text-[#c3ccc0] font-bold uppercase text-[10px] tracking-wider border-b border-[#606e60]/60">
+                    <tr>
+                      <th className="p-3.5">Name</th>
+                      <th className="p-3.5">Email ID</th>
+                      <th className="p-3.5">Phone No.</th>
+                      <th className="p-3.5 text-center">Is Admin</th>
+                      <th className="p-3.5 text-center">Is Active</th>
+                      <th className="p-3.5 text-center">Bookings & Receipts</th>
+                      <th className="p-3.5 text-center">Allow Delete</th>
+                      <th className="p-3.5 text-center">Live Chatbox</th>
+                      <th className="p-3.5 text-center">Rooms & Packages</th>
+                      <th className="p-3.5 text-center">Visual Builder</th>
+                      <th className="p-3.5 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#606e60]/40">
+                    {adminUsers
+                      .filter((u) =>
+                        u.fullName.toLowerCase().includes(userSearchQuery.toLowerCase()) ||
+                        u.username.toLowerCase().includes(userSearchQuery.toLowerCase()) ||
+                        u.email.toLowerCase().includes(userSearchQuery.toLowerCase()) ||
+                        (u.phone && u.phone.includes(userSearchQuery)) ||
+                        u.role.toLowerCase().includes(userSearchQuery.toLowerCase())
+                      )
+                      .map((u) => {
+                        const isPrimaryMaster = u.username === 'SLTTESTANCIA_ADMIN';
+                        return (
+                          <tr key={u.id} className="hover:bg-[#1c2a20]/60 transition-colors">
+                            <td className="p-3.5">
+                              <div className="flex items-center gap-3">
+                                <div className="w-9 h-9 rounded-xl bg-[#0e1710] border border-[#606e60] flex items-center justify-center font-bold text-blue-400 text-sm shrink-0">
+                                  {u.fullName.charAt(0).toUpperCase()}
+                                </div>
+                                <div>
+                                  <div className="font-bold text-[#ebe5de] flex items-center gap-1.5">
+                                    <span>{u.fullName}</span>
+                                    {isPrimaryMaster && (
+                                      <span className="px-1.5 py-0.2 rounded text-[9px] font-black bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                                        PRIMARY MASTER
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="text-[10px] text-[#c3ccc0] font-mono">
+                                    @{u.username}
+                                  </div>
+                                </div>
+                              </div>
+                            </td>
+
+                            <td className="p-3.5 font-mono text-[#ebe5de]">
+                              {u.email}
+                            </td>
+
+                            <td className="p-3.5 font-mono text-emerald-300">
+                              {u.phone || '09615993305'}
+                            </td>
+
+                            <td className="p-3.5 text-center">
+                              <span
+                                className={`px-2.5 py-1 rounded-lg text-[10px] font-extrabold uppercase border ${
+                                  u.role === 'super_admin'
+                                    ? 'bg-blue-950/80 text-blue-300 border-blue-600/80'
+                                    : u.role === 'resort_manager'
+                                    ? 'bg-amber-950/80 text-amber-300 border-amber-600/80'
+                                    : u.role === 'front_desk'
+                                    ? 'bg-emerald-950/80 text-emerald-300 border-emerald-600/80'
+                                    : 'bg-purple-950/80 text-purple-300 border-purple-600/80'
+                                }`}
+                              >
+                                {u.role === 'super_admin'
+                                  ? 'Super Admin'
+                                  : u.role === 'resort_manager'
+                                  ? 'Resort Manager'
+                                  : u.role === 'front_desk'
+                                  ? 'Front Desk'
+                                  : 'Content Editor'}
+                              </span>
+                            </td>
+
+                            {/* 1. IS ACTIVE SWITCH */}
+                            <td className="p-3.5 text-center">
+                              {isPrimaryMaster ? (
+                                <span className="text-[10px] text-emerald-400 font-bold">Always Active</span>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => toggleAdminUserStatus(u.id)}
+                                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer ${
+                                    u.isActive ? 'bg-cyan-500' : 'bg-gray-700'
+                                  }`}
+                                  title={u.isActive ? 'Deactivate User Account' : 'Activate User Account'}
+                                >
+                                  <span
+                                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                                      u.isActive ? 'translate-x-6' : 'translate-x-1'
+                                    }`}
+                                  />
+                                </button>
+                              )}
+                            </td>
+
+                            {/* 2. BOOKINGS & RECEIPTS SWITCH */}
+                            <td className="p-3.5 text-center">
+                              {isPrimaryMaster ? (
+                                <span className="text-[10px] text-cyan-400 font-bold">Enabled</span>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    updateAdminUser(u.id, {
+                                      permissions: {
+                                        ...u.permissions,
+                                        manageBookings: !u.permissions.manageBookings,
+                                      },
+                                    })
+                                  }
+                                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer ${
+                                    u.permissions.manageBookings ? 'bg-cyan-500' : 'bg-gray-700'
+                                  }`}
+                                  title="Toggle Bookings & Receipts Access"
+                                >
+                                  <span
+                                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                                      u.permissions.manageBookings ? 'translate-x-6' : 'translate-x-1'
+                                    }`}
+                                  />
+                                </button>
+                              )}
+                            </td>
+
+                            {/* 3. ALLOW DELETE BOOKINGS SWITCH */}
+                            <td className="p-3.5 text-center">
+                              {isPrimaryMaster ? (
+                                <span className="text-[10px] text-cyan-400 font-bold">Allowed</span>
+                              ) : !u.permissions.manageBookings ? (
+                                <span className="text-[10px] text-gray-500">Disabled</span>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    updateAdminUser(u.id, {
+                                      permissions: {
+                                        ...u.permissions,
+                                        canDeleteBookings: !(u.permissions.canDeleteBookings !== false),
+                                      },
+                                    })
+                                  }
+                                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer ${
+                                    u.permissions.canDeleteBookings !== false ? 'bg-cyan-500' : 'bg-amber-600'
+                                  }`}
+                                  title={
+                                    u.permissions.canDeleteBookings !== false
+                                      ? 'Delete Allowed (Click to set View Only Mode)'
+                                      : 'View Only Mode (Click to allow Deleting Bookings)'
+                                  }
+                                >
+                                  <span
+                                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                                      u.permissions.canDeleteBookings !== false ? 'translate-x-6' : 'translate-x-1'
+                                    }`}
+                                  />
+                                </button>
+                              )}
+                            </td>
+
+                            {/* 4. LIVE CHATBOX SWITCH */}
+                            <td className="p-3.5 text-center">
+                              {isPrimaryMaster ? (
+                                <span className="text-[10px] text-cyan-400 font-bold">Enabled</span>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    updateAdminUser(u.id, {
+                                      permissions: {
+                                        ...u.permissions,
+                                        manageChat: !u.permissions.manageChat,
+                                      },
+                                    })
+                                  }
+                                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer ${
+                                    u.permissions.manageChat ? 'bg-cyan-500' : 'bg-gray-700'
+                                  }`}
+                                  title="Toggle Live Chatbox Access"
+                                >
+                                  <span
+                                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                                      u.permissions.manageChat ? 'translate-x-6' : 'translate-x-1'
+                                    }`}
+                                  />
+                                </button>
+                              )}
+                            </td>
+
+                            {/* 5. ROOMS & PACKAGES SWITCH */}
+                            <td className="p-3.5 text-center">
+                              {isPrimaryMaster ? (
+                                <span className="text-[10px] text-cyan-400 font-bold">Enabled</span>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    updateAdminUser(u.id, {
+                                      permissions: {
+                                        ...u.permissions,
+                                        manageRoomsAndPackages: !u.permissions.manageRoomsAndPackages,
+                                      },
+                                    })
+                                  }
+                                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer ${
+                                    u.permissions.manageRoomsAndPackages ? 'bg-cyan-500' : 'bg-gray-700'
+                                  }`}
+                                  title="Toggle Rooms & Packages Access"
+                                >
+                                  <span
+                                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                                      u.permissions.manageRoomsAndPackages ? 'translate-x-6' : 'translate-x-1'
+                                    }`}
+                                  />
+                                </button>
+                              )}
+                            </td>
+
+                            {/* 6. VISUAL BUILDER SWITCH */}
+                            <td className="p-3.5 text-center">
+                              {isPrimaryMaster ? (
+                                <span className="text-[10px] text-cyan-400 font-bold">Enabled</span>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    updateAdminUser(u.id, {
+                                      permissions: {
+                                        ...u.permissions,
+                                        manageWebsiteAndAssets: !u.permissions.manageWebsiteAndAssets,
+                                      },
+                                    })
+                                  }
+                                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer ${
+                                    u.permissions.manageWebsiteAndAssets ? 'bg-cyan-500' : 'bg-gray-700'
+                                  }`}
+                                  title="Toggle Visual Builder Access"
+                                >
+                                  <span
+                                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                                      u.permissions.manageWebsiteAndAssets ? 'translate-x-6' : 'translate-x-1'
+                                    }`}
+                                  />
+                                </button>
+                              )}
+                            </td>
+
+                            {/* ACTIONS: RESET PASSWORD & DELETE */}
+                            <td className="p-3.5 text-right space-x-1.5">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setUserForPasswordReset(u);
+                                  setNewPasswordInput('');
+                                  setConfirmPasswordInput('');
+                                  setIsChangePasswordModalOpen(true);
+                                }}
+                                className="p-1.5 rounded-lg bg-[#0e1710] border border-[#606e60] text-blue-400 hover:text-blue-300 hover:border-blue-400 transition-colors"
+                                title="Reset User Password"
+                              >
+                                <Key className="w-3.5 h-3.5" />
+                              </button>
+
+                              {!isPrimaryMaster && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (confirm(`Are you sure you want to delete user account @${u.username}?`)) {
+                                      deleteAdminUser(u.id);
+                                    }
+                                  }}
+                                  className="p-1.5 rounded-lg bg-[#0e1710] border border-[#606e60] text-red-400 hover:text-red-300 hover:border-red-500 transition-colors"
+                                  title="Delete User Account"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* MODAL: ADD NEW STAFF USER */}
+        {isAddUserModalOpen && (
+          <div className="fixed inset-0 z-50 bg-[#132016]/90 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto">
+            <div className="bg-[#132016] border border-[#606e60] rounded-3xl max-w-lg w-full p-6 sm:p-8 shadow-2xl text-[#ebe5de] relative space-y-6">
+              <div className="flex items-center justify-between border-b border-[#606e60]/60 pb-3">
+                <h3 className="text-xl font-bold font-serif text-[#ebe5de] flex items-center gap-2">
+                  <UserPlus className="w-5 h-5 text-blue-400" />
+                  Add New Staff Account
+                </h3>
+                <button onClick={() => setIsAddUserModalOpen(false)} className="text-[#c3ccc0] hover:text-[#ebe5de]">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (!newUserData.username || !newUserData.password || !newUserData.fullName || !newUserData.email) {
+                    alert('Please fill out all required fields.');
+                    return;
+                  }
+                  if (adminUsers.some((u) => u.username.toLowerCase() === newUserData.username.toLowerCase())) {
+                    alert('A user with this username already exists.');
+                    return;
+                  }
+                  addAdminUser(newUserData);
+                  setIsAddUserModalOpen(false);
+                }}
+                className="space-y-4 text-xs"
+              >
+                <div>
+                  <label className="text-[#c3ccc0] font-bold block mb-1">Full Name *</label>
+                  <input
+                    type="text"
+                    required
+                    value={newUserData.fullName}
+                    onChange={(e) => setNewUserData({ ...newUserData, fullName: e.target.value })}
+                    placeholder="e.g. Maria Santos"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-[#0e1710] border border-[#606e60]/60 text-[#ebe5de] focus:outline-none focus:border-blue-400"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-[#c3ccc0] font-bold block mb-1">Email Address *</label>
+                    <input
+                      type="email"
+                      required
+                      value={newUserData.email}
+                      onChange={(e) => setNewUserData({ ...newUserData, email: e.target.value })}
+                      placeholder="e.g. msantos@slttestancias.ph"
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-[#0e1710] border border-[#606e60]/60 text-[#ebe5de] focus:outline-none focus:border-blue-400"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[#c3ccc0] font-bold block mb-1">Phone Number *</label>
+                    <input
+                      type="text"
+                      required
+                      value={newUserData.phone}
+                      onChange={(e) => setNewUserData({ ...newUserData, phone: e.target.value })}
+                      placeholder="e.g. 09615993305"
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-[#0e1710] border border-[#606e60]/60 text-[#ebe5de] focus:outline-none focus:border-blue-400"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-[#c3ccc0] font-bold block mb-1">Username *</label>
+                    <input
+                      type="text"
+                      required
+                      value={newUserData.username}
+                      onChange={(e) => setNewUserData({ ...newUserData, username: e.target.value.trim() })}
+                      placeholder="e.g. msantos"
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-[#0e1710] border border-[#606e60]/60 text-[#ebe5de] focus:outline-none focus:border-blue-400"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[#c3ccc0] font-bold block mb-1">Password *</label>
+                    <input
+                      type="password"
+                      required
+                      value={newUserData.password}
+                      onChange={(e) => setNewUserData({ ...newUserData, password: e.target.value })}
+                      placeholder="Min 6 characters"
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-[#0e1710] border border-[#606e60]/60 text-[#ebe5de] focus:outline-none focus:border-blue-400"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-[#c3ccc0] font-bold block mb-1">Assigned Role</label>
+                  <select
+                    value={newUserData.role}
+                    onChange={(e) => {
+                      const role = e.target.value as AdminUserRole;
+                      let defaultPerms: AdminUserPermissions = {
+                        manageBookings: true,
+                        canDeleteBookings: true,
+                        manageChat: true,
+                        manageRoomsAndPackages: true,
+                        manageWebsiteAndAssets: true,
+                        managePaymentsAndNotifications: true,
+                        manageUsers: false,
+                      };
+                      if (role === 'super_admin') {
+                        defaultPerms = {
+                          manageBookings: true,
+                          canDeleteBookings: true,
+                          manageChat: true,
+                          manageRoomsAndPackages: true,
+                          manageWebsiteAndAssets: true,
+                          managePaymentsAndNotifications: true,
+                          manageUsers: true,
+                        };
+                      } else if (role === 'front_desk') {
+                        defaultPerms = {
+                          manageBookings: true,
+                          canDeleteBookings: false,
+                          manageChat: true,
+                          manageRoomsAndPackages: false,
+                          manageWebsiteAndAssets: false,
+                          managePaymentsAndNotifications: false,
+                          manageUsers: false,
+                        };
+                      } else if (role === 'content_editor') {
+                        defaultPerms = {
+                          manageBookings: false,
+                          canDeleteBookings: false,
+                          manageChat: false,
+                          manageRoomsAndPackages: true,
+                          manageWebsiteAndAssets: true,
+                          managePaymentsAndNotifications: false,
+                          manageUsers: false,
+                        };
+                      }
+                      setNewUserData({
+                        ...newUserData,
+                        role,
+                        permissions: defaultPerms,
+                      });
+                    }}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-[#0e1710] border border-[#606e60]/60 text-[#ebe5de]"
+                  >
+                    <option value="super_admin">Super Administrator (Full Governance)</option>
+                    <option value="resort_manager">Resort Manager (All Operational Controls)</option>
+                    <option value="front_desk">Front Desk Officer (Bookings & Live Chat)</option>
+                    <option value="content_editor">Content Editor (Rooms, Packages & Builder)</option>
+                  </select>
+                </div>
+
+                <div className="space-y-2 pt-2 border-t border-[#606e60]/40">
+                  <label className="text-xs font-bold text-[#ad9e92] block">Custom Access Permissions</label>
+                  <div className="grid grid-cols-2 gap-2 text-[11px]">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={newUserData.permissions.manageBookings}
+                        onChange={(e) =>
+                          setNewUserData({
+                            ...newUserData,
+                            permissions: { ...newUserData.permissions, manageBookings: e.target.checked },
+                          })
+                        }
+                        className="accent-blue-500 rounded"
+                      />
+                      <span>Manage Bookings</span>
+                    </label>
+
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={newUserData.permissions.canDeleteBookings !== false}
+                        disabled={!newUserData.permissions.manageBookings}
+                        onChange={(e) =>
+                          setNewUserData({
+                            ...newUserData,
+                            permissions: { ...newUserData.permissions, canDeleteBookings: e.target.checked },
+                          })
+                        }
+                        className="accent-blue-500 rounded disabled:opacity-40"
+                      />
+                      <span className={!newUserData.permissions.manageBookings ? 'opacity-40' : ''}>Allow Delete Bookings</span>
+                    </label>
+
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={newUserData.permissions.manageChat}
+                        onChange={(e) =>
+                          setNewUserData({
+                            ...newUserData,
+                            permissions: { ...newUserData.permissions, manageChat: e.target.checked },
+                          })
+                        }
+                        className="accent-blue-500 rounded"
+                      />
+                      <span>Manage Live Chat</span>
+                    </label>
+
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={newUserData.permissions.manageRoomsAndPackages}
+                        onChange={(e) =>
+                          setNewUserData({
+                            ...newUserData,
+                            permissions: { ...newUserData.permissions, manageRoomsAndPackages: e.target.checked },
+                          })
+                        }
+                        className="accent-blue-500 rounded"
+                      />
+                      <span>Manage Rooms & Pkgs</span>
+                    </label>
+
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={newUserData.permissions.manageWebsiteAndAssets}
+                        onChange={(e) =>
+                          setNewUserData({
+                            ...newUserData,
+                            permissions: { ...newUserData.permissions, manageWebsiteAndAssets: e.target.checked },
+                          })
+                        }
+                        className="accent-blue-500 rounded"
+                      />
+                      <span>Manage Website Assets</span>
+                    </label>
+
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={newUserData.permissions.managePaymentsAndNotifications}
+                        onChange={(e) =>
+                          setNewUserData({
+                            ...newUserData,
+                            permissions: {
+                              ...newUserData.permissions,
+                              managePaymentsAndNotifications: e.target.checked,
+                            },
+                          })
+                        }
+                        className="accent-blue-500 rounded"
+                      />
+                      <span>Manage Payments</span>
+                    </label>
+
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={newUserData.permissions.manageUsers}
+                        onChange={(e) =>
+                          setNewUserData({
+                            ...newUserData,
+                            permissions: { ...newUserData.permissions, manageUsers: e.target.checked },
+                          })
+                        }
+                        className="accent-blue-500 rounded"
+                      />
+                      <span className="font-bold text-blue-300">Manage Users & Access</span>
+                    </label>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-end gap-3 pt-4 border-t border-[#606e60]/60">
+                  <button
+                    type="button"
+                    onClick={() => setIsAddUserModalOpen(false)}
+                    className="px-4 py-2 rounded-xl bg-[#0e1710] border border-[#606e60] text-[#c3ccc0] hover:text-white"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold uppercase shadow-lg transition-colors"
+                  >
+                    Create User Account
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* MODAL: RESET PASSWORD */}
+        {isChangePasswordModalOpen && userForPasswordReset && (
+          <div className="fixed inset-0 z-50 bg-[#132016]/90 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto">
+            <div className="bg-[#132016] border border-[#606e60] rounded-3xl max-w-md w-full p-6 shadow-2xl text-[#ebe5de] relative space-y-6">
+              <div className="flex items-center justify-between border-b border-[#606e60]/60 pb-3">
+                <h3 className="text-lg font-bold font-serif text-[#ebe5de] flex items-center gap-2">
+                  <Key className="w-5 h-5 text-blue-400" />
+                  Reset Password: {userForPasswordReset.fullName}
+                </h3>
+                <button
+                  onClick={() => {
+                    setIsChangePasswordModalOpen(false);
+                    setUserForPasswordReset(null);
+                  }}
+                  className="text-[#c3ccc0] hover:text-[#ebe5de]"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (newPasswordInput.length < 6) {
+                    alert('Password must be at least 6 characters long.');
+                    return;
+                  }
+                  if (newPasswordInput !== confirmPasswordInput) {
+                    alert('New passwords do not match.');
+                    return;
+                  }
+                  resetAdminUserPassword(userForPasswordReset.id, newPasswordInput);
+                  setIsChangePasswordModalOpen(false);
+                  setUserForPasswordReset(null);
+                }}
+                className="space-y-4 text-xs"
+              >
+                <div className="p-3 rounded-xl bg-[#0e1710] border border-[#606e60]/60 text-[11px] text-[#c3ccc0]">
+                  Target User: <strong className="text-[#ebe5de]">{userForPasswordReset.fullName}</strong> (@
+                  {userForPasswordReset.username})
+                </div>
+
+                <div>
+                  <label className="text-[#c3ccc0] font-bold block mb-1">New Password *</label>
+                  <input
+                    type="password"
+                    required
+                    value={newPasswordInput}
+                    onChange={(e) => setNewPasswordInput(e.target.value)}
+                    placeholder="Enter new password"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-[#0e1710] border border-[#606e60]/60 text-[#ebe5de] focus:outline-none focus:border-blue-400"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[#c3ccc0] font-bold block mb-1">Confirm New Password *</label>
+                  <input
+                    type="password"
+                    required
+                    value={confirmPasswordInput}
+                    onChange={(e) => setConfirmPasswordInput(e.target.value)}
+                    placeholder="Re-enter new password"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-[#0e1710] border border-[#606e60]/60 text-[#ebe5de] focus:outline-none focus:border-blue-400"
+                  />
+                </div>
+
+                <div className="flex items-center justify-end gap-3 pt-4 border-t border-[#606e60]/60">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsChangePasswordModalOpen(false);
+                      setUserForPasswordReset(null);
+                    }}
+                    className="px-4 py-2 rounded-xl bg-[#0e1710] border border-[#606e60] text-[#c3ccc0] hover:text-white"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold uppercase shadow-lg transition-colors"
+                  >
+                    Update Password
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* MODAL: EDIT PERMISSIONS */}
+        {isEditPermissionsModalOpen && userForPermissionsEdit && (
+          <div className="fixed inset-0 z-50 bg-[#132016]/90 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto">
+            <div className="bg-[#132016] border border-[#606e60] rounded-3xl max-w-md w-full p-6 shadow-2xl text-[#ebe5de] relative space-y-6">
+              <div className="flex items-center justify-between border-b border-[#606e60]/60 pb-3">
+                <h3 className="text-lg font-bold font-serif text-[#ebe5de] flex items-center gap-2">
+                  <Sliders className="w-5 h-5 text-amber-400" />
+                  Edit Access Rights: {userForPermissionsEdit.fullName}
+                </h3>
+                <button
+                  onClick={() => {
+                    setIsEditPermissionsModalOpen(false);
+                    setUserForPermissionsEdit(null);
+                  }}
+                  className="text-[#c3ccc0] hover:text-[#ebe5de]"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="space-y-4 text-xs">
+                <div className="p-3 rounded-xl bg-[#0e1710] border border-[#606e60]/60 text-[11px] text-[#c3ccc0]">
+                  Role: <strong className="text-amber-300 uppercase">{userForPermissionsEdit.role.replace('_', ' ')}</strong>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="flex items-center gap-2 cursor-pointer p-2 rounded-lg bg-[#0e1710] border border-[#606e60]/40">
+                    <input
+                      type="checkbox"
+                      checked={editingPermissions.manageBookings}
+                      onChange={(e) =>
+                        setEditingPermissions({ ...editingPermissions, manageBookings: e.target.checked })
+                      }
+                      className="accent-amber-500 rounded"
+                    />
+                    <span>Manage Bookings & Customer Receipts</span>
+                  </label>
+
+                  {editingPermissions.manageBookings && (
+                    <label className="flex items-center gap-2 cursor-pointer p-2 ml-4 rounded-lg bg-[#0b120c] border border-amber-600/40 text-amber-200">
+                      <input
+                        type="checkbox"
+                        checked={editingPermissions.canDeleteBookings !== false}
+                        onChange={(e) =>
+                          setEditingPermissions({ ...editingPermissions, canDeleteBookings: e.target.checked })
+                        }
+                        className="accent-amber-500 rounded"
+                      />
+                      <span className="text-[11px]">Allow Deleting Bookings (Uncheck for View Only Mode)</span>
+                    </label>
+                  )}
+
+                  <label className="flex items-center gap-2 cursor-pointer p-2 rounded-lg bg-[#0e1710] border border-[#606e60]/40">
+                    <input
+                      type="checkbox"
+                      checked={editingPermissions.manageChat}
+                      onChange={(e) =>
+                        setEditingPermissions({ ...editingPermissions, manageChat: e.target.checked })
+                      }
+                      className="accent-amber-500 rounded"
+                    />
+                    <span>Manage Live Chat Messaging</span>
+                  </label>
+
+                  <label className="flex items-center gap-2 cursor-pointer p-2 rounded-lg bg-[#0e1710] border border-[#606e60]/40">
+                    <input
+                      type="checkbox"
+                      checked={editingPermissions.manageRoomsAndPackages}
+                      onChange={(e) =>
+                        setEditingPermissions({ ...editingPermissions, manageRoomsAndPackages: e.target.checked })
+                      }
+                      className="accent-amber-500 rounded"
+                    />
+                    <span>Manage Rooms, Villas & Packages</span>
+                  </label>
+
+                  <label className="flex items-center gap-2 cursor-pointer p-2 rounded-lg bg-[#0e1710] border border-[#606e60]/40">
+                    <input
+                      type="checkbox"
+                      checked={editingPermissions.manageWebsiteAndAssets}
+                      onChange={(e) =>
+                        setEditingPermissions({ ...editingPermissions, manageWebsiteAndAssets: e.target.checked })
+                      }
+                      className="accent-amber-500 rounded"
+                    />
+                    <span>Manage Website Layout & Assets</span>
+                  </label>
+
+                  <label className="flex items-center gap-2 cursor-pointer p-2 rounded-lg bg-[#0e1710] border border-[#606e60]/40">
+                    <input
+                      type="checkbox"
+                      checked={editingPermissions.managePaymentsAndNotifications}
+                      onChange={(e) =>
+                        setEditingPermissions({
+                          ...editingPermissions,
+                          managePaymentsAndNotifications: e.target.checked,
+                        })
+                      }
+                      className="accent-amber-500 rounded"
+                    />
+                    <span>Manage Payment Banks & Notification Templates</span>
+                  </label>
+
+                  <label className="flex items-center gap-2 cursor-pointer p-2 rounded-lg bg-[#0e1710] border border-[#606e60]/40">
+                    <input
+                      type="checkbox"
+                      checked={editingPermissions.manageUsers}
+                      onChange={(e) =>
+                        setEditingPermissions({ ...editingPermissions, manageUsers: e.target.checked })
+                      }
+                      className="accent-blue-500 rounded"
+                    />
+                    <span className="font-bold text-blue-300">Super Admin User Governance</span>
+                  </label>
+                </div>
+
+                <div className="flex items-center justify-end gap-3 pt-4 border-t border-[#606e60]/60">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsEditPermissionsModalOpen(false);
+                      setUserForPermissionsEdit(null);
+                    }}
+                    className="px-4 py-2 rounded-xl bg-[#0e1710] border border-[#606e60] text-[#c3ccc0] hover:text-white"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      updateAdminUser(userForPermissionsEdit.id, { permissions: editingPermissions });
+                      setIsEditPermissionsModalOpen(false);
+                      setUserForPermissionsEdit(null);
+                    }}
+                    className="px-6 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-amber-950 font-bold uppercase shadow-lg transition-colors"
+                  >
+                    Save Permissions
+                  </button>
+                </div>
               </div>
             </div>
           </div>

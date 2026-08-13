@@ -81,7 +81,7 @@ export const INITIAL_RESORT_INFO = {
   name: "SLTT ESTANCIAS",
   location: "TIGBAO, MAUSWAGON LUGAIT",
   contactNumber: "09054965912",
-  email: "contact@slttb2btravelsolutions.com",
+  email: "reservations@slttestanciasresort.com",
 };
 
 // Edit room rates and images

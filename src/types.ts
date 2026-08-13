@@ -285,3 +285,29 @@ export interface ChatThread {
   subject?: string;
 }
 
+export type AdminUserRole = 'super_admin' | 'resort_manager' | 'front_desk' | 'content_editor';
+
+export interface AdminUserPermissions {
+  manageBookings: boolean;
+  canDeleteBookings?: boolean; // If false, user has View-Only access for Bookings & Receipts (cannot delete)
+  manageChat: boolean;
+  manageRoomsAndPackages: boolean;
+  manageWebsiteAndAssets: boolean;
+  managePaymentsAndNotifications: boolean;
+  manageUsers: boolean;
+}
+
+export interface AdminUser {
+  id: string;
+  username: string;
+  password: string;
+  fullName: string;
+  email: string;
+  phone?: string;
+  role: AdminUserRole;
+  permissions: AdminUserPermissions;
+  isActive: boolean;
+  createdAt: string;
+  lastLogin?: string;
+}
+

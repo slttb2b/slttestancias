@@ -11,7 +11,7 @@ export const INITIAL_RESORT_INFO: ResortInfo = {
   location: 'Tigbao, Mauswagon Lugait',
   address: 'Tigbao, Mauswagon Lugait, Misamis Oriental / Lanao del Norte Border, Philippines',
   contactNumber: '09054965912',
-  email: 'contact@slttb2btravelsolutions.com',
+  email: 'reservations@slttestanciasresort.com',
   facebookPage: 'SLTT ESTANCIAS',
   googleMapsUrl: 'https://maps.app.goo.gl/HQjHywiXkYad41So8',
   businessHours: 'Open Daily 24/7 (Front Desk 24/7)',
@@ -879,7 +879,7 @@ export const formatNotificationMessage = (
     location: 'Tigbao, Mauswagon Lugait',
     address: 'Tigbao, Mauswagon Lugait, Misamis Oriental / Lanao del Norte Border, Philippines',
     contactNumber: '09054965912',
-    email: 'contact@slttb2btravelsolutions.com',
+    email: 'reservations@slttestanciasresort.com',
     facebookPage: 'SLTT ESTANCIAS',
     googleMapsUrl: '',
     businessHours: '',
@@ -910,7 +910,7 @@ export const formatNotificationMessage = (
     .replace(/\{add_ons_list\}/g, addOnsText)
     .replace(/\{resort_address\}/g, info.address || 'Tigbao, Mauswagon Lugait, Misamis Oriental')
     .replace(/\{resort_contact\}/g, info.contactNumber || '09054965912')
-    .replace(/\{resort_email\}/g, info.email || 'contact@slttb2btravelsolutions.com');
+    .replace(/\{resort_email\}/g, info.email || 'reservations@slttestanciasresort.com');
 };
 
 export const INITIAL_CHAT_THREADS: import('../types').ChatThread[] = [

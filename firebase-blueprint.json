@@ -1,0 +1,28 @@
+{
+  "entities": {
+    "admin_users": {
+      "title": "Admin Users",
+      "description": "Staff and Super Admin user accounts"
+    },
+    "bookings": {
+      "title": "Bookings",
+      "description": "Guest reservations"
+    },
+    "rooms": {
+      "title": "Rooms",
+      "description": "Resort accommodation rooms and villas"
+    },
+    "packages": {
+      "title": "Packages",
+      "description": "Resort day tour and staycation packages"
+    },
+    "chat_threads": {
+      "title": "Chat Threads",
+      "description": "Live guest chat messages"
+    },
+    "settings": {
+      "title": "Resort Settings",
+      "description": "Payment settings, resort info, design assets"
+    }
+  }
+}

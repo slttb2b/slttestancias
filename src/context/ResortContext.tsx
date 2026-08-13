@@ -14,6 +14,9 @@ import {
   NotificationLog,
   ChatThread,
   ChatMessage,
+  AdminUser,
+  AdminUserRole,
+  AdminUserPermissions,
 } from '../types';
 import {
   INITIAL_RESORT_INFO,
@@ -28,6 +31,28 @@ import {
   DEFAULT_NOTIFICATION_TEMPLATES,
   formatNotificationMessage,
 } from '../data/resortData';
+import {
+  seedFirestoreIfEmpty,
+  subscribeAdminUsers,
+  subscribeBookings,
+  subscribeRooms,
+  subscribePackages,
+  subscribeChatThreads,
+  subscribeSettings,
+  saveAdminUserToFirestore,
+  deleteAdminUserFromFirestore,
+  saveBookingToFirestore,
+  deleteBookingFromFirestore,
+  saveRoomToFirestore,
+  deleteRoomFromFirestore,
+  savePackageToFirestore,
+  deletePackageFromFirestore,
+  saveChatThreadToFirestore,
+  deleteChatThreadFromFirestore,
+  saveResortInfoToFirestore,
+  savePaymentSettingsToFirestore,
+  forceSyncAllToFirestore,
+} from '../services/firestoreService';
 
 export type ActiveTab =
   | 'home'
@@ -156,6 +181,18 @@ interface ResortContextType {
   markThreadReadByCustomer: (threadId: string) => void;
   deleteChatThread: (threadId: string) => void;
   unreadChatCountOwner: number;
+
+  // Super Admin & User Management
+  adminUsers: AdminUser[];
+  currentAdminUser: AdminUser | null;
+  setCurrentAdminUser: (user: AdminUser | null) => void;
+  addAdminUser: (userData: Omit<AdminUser, 'id' | 'createdAt'>) => AdminUser;
+  updateAdminUser: (id: string, updates: Partial<AdminUser>) => void;
+  deleteAdminUser: (id: string) => void;
+  resetAdminUserPassword: (id: string, newPass: string) => void;
+  toggleAdminUserStatus: (id: string) => void;
+  authenticateAdminUser: (username: string, pass: string) => AdminUser | null;
+  syncAllDataToFirebase: () => Promise<boolean>;
 }
 
 const ResortContext = createContext<ResortContextType | undefined>(undefined);
@@ -173,8 +210,118 @@ const getAfterTomorrowDate = () => {
   return d.toISOString().split('T')[0];
 };
 
+const DEFAULT_ADMIN_USERS: AdminUser[] = [
+  {
+    id: 'user-super-admin-1',
+    username: 'SLTTESTANCIA_ADMIN',
+    password: 'Slttestancias123@',
+    fullName: 'Master Resort Administrator',
+    email: 'reservations@slttestanciasresort.com',
+    phone: '09615993305',
+    role: 'super_admin',
+    permissions: {
+      manageBookings: true,
+      canDeleteBookings: true,
+      manageChat: true,
+      manageRoomsAndPackages: true,
+      manageWebsiteAndAssets: true,
+      managePaymentsAndNotifications: true,
+      manageUsers: true,
+    },
+    isActive: true,
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: 'user-manager-2',
+    username: 'manager_maria',
+    password: 'Manager123@',
+    fullName: 'Maria Santos (Resort Manager)',
+    email: 'maria@slttestancias.com',
+    phone: '09551234567',
+    role: 'resort_manager',
+    permissions: {
+      manageBookings: true,
+      canDeleteBookings: true,
+      manageChat: true,
+      manageRoomsAndPackages: true,
+      manageWebsiteAndAssets: true,
+      managePaymentsAndNotifications: true,
+      manageUsers: false,
+    },
+    isActive: true,
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: 'user-frontdesk-3',
+    username: 'frontdesk_staff',
+    password: 'Frontdesk123@',
+    fullName: 'Front Desk Officer',
+    email: 'reception@slttestancias.com',
+    phone: '09556666666',
+    role: 'front_desk',
+    permissions: {
+      manageBookings: true,
+      canDeleteBookings: false,
+      manageChat: true,
+      manageRoomsAndPackages: false,
+      manageWebsiteAndAssets: false,
+      managePaymentsAndNotifications: false,
+      manageUsers: false,
+    },
+    isActive: true,
+    createdAt: new Date().toISOString(),
+  },
+];
+
 export const ResortProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [activeTab, setActiveTab] = useState<ActiveTab>('home');
+
+  // Super Admin & User Management State
+  const [adminUsers, setAdminUsers] = useState<AdminUser[]>(() => {
+    try {
+      const saved = localStorage.getItem('sltt_admin_users_v1');
+      if (saved) {
+        const parsed: AdminUser[] = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const hasMaster = parsed.some((u) => u.username === 'SLTTESTANCIA_ADMIN');
+          if (hasMaster) {
+            return parsed.map((u) =>
+              u.username === 'SLTTESTANCIA_ADMIN'
+                ? { ...u, password: 'Slttestancias123@', role: 'super_admin', isActive: true }
+                : u
+            );
+          } else {
+            return [DEFAULT_ADMIN_USERS[0], ...parsed];
+          }
+        }
+      }
+    } catch (e) {
+      console.error('Error loading admin users:', e);
+    }
+    return DEFAULT_ADMIN_USERS;
+  });
+
+  const [currentAdminUser, setCurrentAdminUser] = useState<AdminUser | null>(() => {
+    try {
+      const saved = localStorage.getItem('sltt_current_admin_user');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {
+      console.error('Error loading current admin user:', e);
+    }
+    return null;
+  });
+
+  useEffect(() => {
+    localStorage.setItem('sltt_admin_users_v1', JSON.stringify(adminUsers));
+  }, [adminUsers]);
+
+  useEffect(() => {
+    if (currentAdminUser) {
+      localStorage.setItem('sltt_current_admin_user', JSON.stringify(currentAdminUser));
+    } else {
+      localStorage.removeItem('sltt_current_admin_user');
+    }
+  }, [currentAdminUser]);
   const [resortInfo, setResortInfo] = useState<ResortInfo>(() => {
     try {
       const saved = localStorage.getItem('sltt_resort_info');
@@ -187,8 +334,8 @@ export const ResortProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         if (!parsed.businessHours || parsed.businessHours === 'Open Daily 8:00 AM - 9:00 PM (Front Desk 24/7)') {
           parsed.businessHours = 'Open Daily 24/7 (Front Desk 24/7)';
         }
-        if (!parsed.email || parsed.email === 'slttestanciasinquire@gmail.com') {
-          parsed.email = 'contact@slttb2btravelsolutions.com';
+        if (!parsed.email || parsed.email === 'slttestanciasinquire@gmail.com' || parsed.email === 'contact@slttb2btravelsolutions.com') {
+          parsed.email = 'reservations@slttestanciasresort.com';
         }
         return { ...INITIAL_RESORT_INFO, ...parsed };
       }
@@ -445,6 +592,38 @@ export const ResortProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   }, [currentCustomerThreadId]);
 
+  // --- FIRESTORE DATABASE INITIALIZATION & REALTIME SYNC ---
+  useEffect(() => {
+    seedFirestoreIfEmpty(
+      DEFAULT_ADMIN_USERS,
+      INITIAL_ROOMS,
+      INITIAL_PACKAGES,
+      INITIAL_BOOKINGS,
+      INITIAL_RESORT_INFO,
+      INITIAL_PAYMENT_SETTINGS,
+      INITIAL_CHAT_THREADS
+    );
+
+    const unsubUsers = subscribeAdminUsers((users) => setAdminUsers(users));
+    const unsubBookings = subscribeBookings((b) => setBookings(b));
+    const unsubRooms = subscribeRooms((r) => setRooms(r));
+    const unsubPackages = subscribePackages((p) => setPackages(p));
+    const unsubChat = subscribeChatThreads((t) => setChatThreads(t));
+    const unsubSettings = subscribeSettings(
+      (info) => setResortInfo(info),
+      (payment) => setPaymentSettings(payment)
+    );
+
+    return () => {
+      unsubUsers();
+      unsubBookings();
+      unsubRooms();
+      unsubPackages();
+      unsubChat();
+      unsubSettings();
+    };
+  }, []);
+
   const unreadChatCountOwner = chatThreads.reduce((acc, t) => acc + (t.unreadCountOwner || 0), 0);
 
   const createOrStartChatThread = (
@@ -499,6 +678,7 @@ export const ResortProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         status: 'active',
       };
 
+      saveChatThreadToFirestore(newThread);
       setChatThreads((prev) => [newThread, ...prev]);
     } else if (initialText || imageUrl) {
       const msg: ChatMessage = {
@@ -513,7 +693,7 @@ export const ResortProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       setChatThreads((prev) =>
         prev.map((t) => {
           if (t.id === threadId) {
-            return {
+            const updated: ChatThread = {
               ...t,
               customerName: guestInfo.name || t.customerName,
               customerEmail: guestInfo.email || t.customerEmail,
@@ -523,6 +703,8 @@ export const ResortProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               unreadCountOwner: t.unreadCountOwner + 1,
               messages: [...t.messages, msg],
             };
+            saveChatThreadToFirestore(updated);
+            return updated;
           }
           return t;
         })
@@ -556,7 +738,7 @@ export const ResortProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       prev.map((t) => {
         if (t.id === threadId) {
           const isOwner = sender === 'owner';
-          return {
+          const updated: ChatThread = {
             ...t,
             lastMessage: text.trim() || (imageUrl ? '📷 [Image Attachment]' : t.lastMessage),
             lastUpdated: now,
@@ -564,6 +746,8 @@ export const ResortProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             unreadCountCustomer: isOwner ? t.unreadCountCustomer + 1 : t.unreadCountCustomer,
             messages: [...t.messages, newMsg],
           };
+          saveChatThreadToFirestore(updated);
+          return updated;
         }
         return t;
       })
@@ -574,11 +758,13 @@ export const ResortProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setChatThreads((prev) =>
       prev.map((t) => {
         if (t.id === threadId) {
-          return {
+          const updated: ChatThread = {
             ...t,
             unreadCountOwner: 0,
             messages: t.messages.map((m) => (m.sender === 'customer' ? { ...m, read: true } : m)),
           };
+          saveChatThreadToFirestore(updated);
+          return updated;
         }
         return t;
       })
@@ -589,11 +775,13 @@ export const ResortProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setChatThreads((prev) =>
       prev.map((t) => {
         if (t.id === threadId) {
-          return {
+          const updated: ChatThread = {
             ...t,
             unreadCountCustomer: 0,
             messages: t.messages.map((m) => (m.sender === 'owner' ? { ...m, read: true } : m)),
           };
+          saveChatThreadToFirestore(updated);
+          return updated;
         }
         return t;
       })
@@ -601,10 +789,113 @@ export const ResortProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const deleteChatThread = (threadId: string) => {
+    deleteChatThreadFromFirestore(threadId);
     setChatThreads((prev) => prev.filter((t) => t.id !== threadId));
     if (currentCustomerThreadId === threadId) {
       setCurrentCustomerThreadId(null);
     }
+  };
+
+  // User Management Methods
+  const authenticateAdminUser = (username: string, pass: string): AdminUser | null => {
+    const found = adminUsers.find(
+      (u) => u.username.trim().toLowerCase() === username.trim().toLowerCase() && u.password === pass && u.isActive
+    );
+    if (found) {
+      const updatedUser = { ...found, lastLogin: new Date().toISOString() };
+      setCurrentAdminUser(updatedUser);
+      saveAdminUserToFirestore(updatedUser);
+      setAdminUsers((prev) =>
+        prev.map((u) => (u.id === found.id ? updatedUser : u))
+      );
+      return updatedUser;
+    }
+    return null;
+  };
+
+  const addAdminUser = (userData: Omit<AdminUser, 'id' | 'createdAt'>): AdminUser => {
+    const newUser: AdminUser = {
+      ...userData,
+      id: `usr-${Date.now()}`,
+      createdAt: new Date().toISOString(),
+    };
+    saveAdminUserToFirestore(newUser);
+    setAdminUsers((prev) => [...prev, newUser]);
+    showToast(`Staff account for ${newUser.fullName} created successfully.`, 'success');
+    return newUser;
+  };
+
+  const updateAdminUser = (id: string, updates: Partial<AdminUser>) => {
+    const target = adminUsers.find((u) => u.id === id);
+    if (!target) return;
+    const updated = { ...target, ...updates };
+    saveAdminUserToFirestore(updated);
+    if (currentAdminUser && currentAdminUser.id === id) {
+      setCurrentAdminUser(updated);
+    }
+    setAdminUsers((prev) =>
+      prev.map((u) => (u.id === id ? updated : u))
+    );
+    showToast('User account updated.', 'success');
+  };
+
+  const deleteAdminUser = (id: string) => {
+    const target = adminUsers.find((u) => u.id === id);
+    if (target?.username === 'SLTTESTANCIA_ADMIN') {
+      showToast('Cannot delete primary Super Admin account.', 'error');
+      return;
+    }
+    deleteAdminUserFromFirestore(id);
+    setAdminUsers((prev) => prev.filter((u) => u.id !== id));
+    showToast('User account removed.', 'info');
+  };
+
+  const resetAdminUserPassword = (id: string, newPass: string) => {
+    const target = adminUsers.find((u) => u.id === id);
+    if (!target) return;
+    const updated = { ...target, password: newPass };
+    saveAdminUserToFirestore(updated);
+    if (currentAdminUser && currentAdminUser.id === id) {
+      setCurrentAdminUser(updated);
+    }
+    setAdminUsers((prev) =>
+      prev.map((u) => (u.id === id ? updated : u))
+    );
+    showToast('Password updated successfully.', 'success');
+  };
+
+  const toggleAdminUserStatus = (id: string) => {
+    const target = adminUsers.find((u) => u.id === id);
+    if (target?.username === 'SLTTESTANCIA_ADMIN') {
+      showToast('Primary Super Admin cannot be deactivated.', 'error');
+      return;
+    }
+    if (!target) return;
+    const updated = { ...target, isActive: !target.isActive };
+    saveAdminUserToFirestore(updated);
+    setAdminUsers((prev) =>
+      prev.map((u) => (u.id === id ? updated : u))
+    );
+    showToast('User account status updated.', 'info');
+  };
+
+  const syncAllDataToFirebase = async (): Promise<boolean> => {
+    showToast('Syncing all application data to Firebase Firestore Database...', 'info');
+    const success = await forceSyncAllToFirestore(
+      adminUsers,
+      rooms,
+      packages,
+      bookings,
+      resortInfo,
+      paymentSettings,
+      chatThreads
+    );
+    if (success) {
+      showToast('All collections successfully synchronized to Firebase Firestore!', 'success');
+    } else {
+      showToast('Failed to sync data to Firebase Cloud Database.', 'error');
+    }
+    return success;
   };
 
 
@@ -657,11 +948,13 @@ export const ResortProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const updateResortInfo = (info: ResortInfo) => {
     setResortInfo(info);
+    saveResortInfoToFirestore(info);
     showToast('Overall System Portal details & design assets updated.', 'success');
   };
 
   const updatePaymentSettings = (settings: PaymentSettings) => {
     setPaymentSettings(settings);
+    savePaymentSettingsToFirestore(settings);
     showToast('Payment Options and Bank Details saved.', 'success');
   };
 
@@ -693,6 +986,7 @@ export const ResortProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       };
     }
 
+    saveBookingToFirestore(finalBooking);
     setBookings((prev) => [finalBooking, ...prev]);
     setLastSubmittedBooking(finalBooking);
     showToast(`Booking submitted! Automated Confirmation Email sent to ${newBooking.email}`, 'success');
@@ -734,13 +1028,16 @@ export const ResortProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           updatedNotifications = [logEntry, ...updatedNotifications];
         }
 
-        return {
+        const updatedBooking: Booking = {
           ...b,
           status,
           adminNotes: notes !== undefined ? notes : b.adminNotes,
           paymentStatus: paymentStatus !== undefined ? paymentStatus : b.paymentStatus,
           notificationsSent: updatedNotifications,
         };
+
+        saveBookingToFirestore(updatedBooking);
+        return updatedBooking;
       })
     );
 
@@ -752,11 +1049,21 @@ export const ResortProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const deleteBooking = (id: string) => {
+    deleteBookingFromFirestore(id);
     setBookings((prev) => prev.filter((b) => b.id !== id));
     showToast('Booking deleted.', 'info');
   };
 
   const attachBookingReceipt = (bookingId: string, receiptUrl: string, refCode?: string) => {
+    const target = bookings.find((b) => b.id === bookingId);
+    if (target) {
+      const updated: Booking = {
+        ...target,
+        paymentReceiptUrl: receiptUrl,
+        paymentReferenceCode: refCode || target.paymentReferenceCode,
+      };
+      saveBookingToFirestore(updated);
+    }
     setBookings((prev) =>
       prev.map((b) =>
         b.id === bookingId
@@ -772,6 +1079,11 @@ export const ResortProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const toggleRoomAvailability = (roomId: string) => {
+    const target = rooms.find((r) => r.id === roomId);
+    if (target) {
+      const updated = { ...target, isAvailable: !target.isAvailable };
+      saveRoomToFirestore(updated);
+    }
     setRooms((prev) =>
       prev.map((r) => (r.id === roomId ? { ...r, isAvailable: !r.isAvailable } : r))
     );
@@ -779,6 +1091,11 @@ export const ResortProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const updateRoomPrice = (roomId: string, newPrice: number) => {
+    const target = rooms.find((r) => r.id === roomId);
+    if (target) {
+      const updated = { ...target, pricePerNight: newPrice };
+      saveRoomToFirestore(updated);
+    }
     setRooms((prev) =>
       prev.map((r) => (r.id === roomId ? { ...r, pricePerNight: newPrice } : r))
     );
@@ -786,21 +1103,29 @@ export const ResortProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const addRoom = (newRoom: Room) => {
+    saveRoomToFirestore(newRoom);
     setRooms((prev) => [...prev, newRoom]);
     showToast(`Room "${newRoom.name}" added.`, 'success');
   };
 
   const updateRoom = (updatedRoom: Room) => {
+    saveRoomToFirestore(updatedRoom);
     setRooms((prev) => prev.map((r) => (r.id === updatedRoom.id ? updatedRoom : r)));
     showToast(`Room "${updatedRoom.name}" updated.`, 'success');
   };
 
   const deleteRoom = (roomId: string) => {
+    deleteRoomFromFirestore(roomId);
     setRooms((prev) => prev.filter((r) => r.id !== roomId));
     showToast('Room deleted.', 'info');
   };
 
   const blockRoomDates = (roomId: string, dates: string[]) => {
+    const target = rooms.find((r) => r.id === roomId);
+    if (target) {
+      const updated = { ...target, blockedDates: dates };
+      saveRoomToFirestore(updated);
+    }
     setRooms((prev) =>
       prev.map((r) => (r.id === roomId ? { ...r, blockedDates: dates } : r))
     );
@@ -808,16 +1133,19 @@ export const ResortProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const addPackage = (newPkg: Package) => {
+    savePackageToFirestore(newPkg);
     setPackages((prev) => [...prev, newPkg]);
     showToast(`Package "${newPkg.name}" added.`, 'success');
   };
 
   const updatePackage = (updatedPkg: Package) => {
+    savePackageToFirestore(updatedPkg);
     setPackages((prev) => prev.map((p) => (p.id === updatedPkg.id ? updatedPkg : p)));
     showToast(`Package "${updatedPkg.name}" updated.`, 'success');
   };
 
   const deletePackage = (pkgId: string) => {
+    deletePackageFromFirestore(pkgId);
     setPackages((prev) => prev.filter((p) => p.id !== pkgId));
     showToast('Package removed.', 'info');
   };
@@ -904,6 +1232,16 @@ export const ResortProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         markThreadReadByCustomer,
         deleteChatThread,
         unreadChatCountOwner,
+        adminUsers,
+        currentAdminUser,
+        setCurrentAdminUser,
+        addAdminUser,
+        updateAdminUser,
+        deleteAdminUser,
+        resetAdminUserPassword,
+        toggleAdminUserStatus,
+        authenticateAdminUser,
+        syncAllDataToFirebase,
       }}
     >
       {children}
