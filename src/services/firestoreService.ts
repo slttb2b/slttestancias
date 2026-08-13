@@ -1,6 +1,7 @@
 import {
   collection,
   doc,
+  getDoc,
   getDocs,
   setDoc,
   updateDoc,
@@ -111,8 +112,45 @@ export const seedFirestoreIfEmpty = async (
     const resortInfoDoc = doc(db, COLLECTIONS.SETTINGS, 'resort_info');
     const paymentSettingsDoc = doc(db, COLLECTIONS.SETTINGS, 'payment_settings');
     
-    await setDoc(resortInfoDoc, cleanForFirestore(defaultResortInfo), { merge: true });
-    await setDoc(paymentSettingsDoc, cleanForFirestore(defaultPaymentSettings), { merge: true });
+    const resortInfoSnap = await getDoc(resortInfoDoc);
+    if (!resortInfoSnap.exists()) {
+      let infoToSeed = defaultResortInfo;
+      try {
+        const localSaved = localStorage.getItem('sltt_resort_info');
+        if (localSaved) {
+          const parsed = JSON.parse(localSaved);
+          if (parsed && typeof parsed === 'object') {
+            infoToSeed = { ...defaultResortInfo, ...parsed };
+          }
+        }
+      } catch (e) {
+        console.warn('Error reading local sltt_resort_info migration fallback:', e);
+      }
+      console.log('Firestore: Seeding resort_info doc...');
+      await setDoc(resortInfoDoc, cleanForFirestore(infoToSeed));
+    } else {
+      console.log('Firestore: resort_info document already exists, preserving cloud content.');
+    }
+
+    const paymentSettingsSnap = await getDoc(paymentSettingsDoc);
+    if (!paymentSettingsSnap.exists()) {
+      let paymentToSeed = defaultPaymentSettings;
+      try {
+        const localSaved = localStorage.getItem('sltt_payment_settings');
+        if (localSaved) {
+          const parsed = JSON.parse(localSaved);
+          if (parsed && typeof parsed === 'object') {
+            paymentToSeed = { ...defaultPaymentSettings, ...parsed };
+          }
+        }
+      } catch (e) {
+        console.warn('Error reading local sltt_payment_settings migration fallback:', e);
+      }
+      console.log('Firestore: Seeding payment_settings doc...');
+      await setDoc(paymentSettingsDoc, cleanForFirestore(paymentToSeed));
+    } else {
+      console.log('Firestore: payment_settings document already exists, preserving cloud content.');
+    }
 
     // 6. Seed Chat Threads
     const chatSnap = await getDocs(collection(db, COLLECTIONS.CHAT_THREADS));

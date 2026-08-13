@@ -34,6 +34,17 @@ export const FloatingAdminToolbar: React.FC = () => {
   const [isFontOpen, setIsFontOpen] = useState(false);
   const [isAddBlockOpen, setIsAddBlockOpen] = useState(false);
 
+  const [isPublishing, setIsPublishing] = useState(false);
+
+  const handlePublishDesign = async () => {
+    setIsPublishing(true);
+    await updateResortInfo(
+      resortInfo,
+      'Design changes published live to all website visitors!'
+    );
+    setIsPublishing(false);
+  };
+
   if (!isAdminLoggedIn) return null;
 
   const currentPalette: ThemePaletteKey = resortInfo.themePalette || 'emerald';
@@ -340,18 +351,12 @@ export const FloatingAdminToolbar: React.FC = () => {
           </button>
 
           <button
-            onClick={() => {
-              try {
-                localStorage.setItem('sltt_resort_info', JSON.stringify(resortInfo));
-              } catch (e) {
-                console.warn('Storage save error:', e);
-              }
-              showToast('Design changes published live to all website visitors!', 'success');
-            }}
-            className="px-4 py-1.5 rounded-xl bg-[#ad9e92] hover:bg-[#c3ccc0] text-[#1c2a20] font-extrabold flex items-center gap-1.5 cursor-pointer shadow-md transition-all active:scale-95"
+            onClick={handlePublishDesign}
+            disabled={isPublishing}
+            className="px-4 py-1.5 rounded-xl bg-[#ad9e92] hover:bg-[#c3ccc0] text-[#1c2a20] font-extrabold flex items-center gap-1.5 cursor-pointer shadow-md transition-all active:scale-95 disabled:opacity-50"
           >
-            <Save className="w-3.5 h-3.5" />
-            <span>Publish Design</span>
+            <Save className={`w-3.5 h-3.5 ${isPublishing ? 'animate-spin' : ''}`} />
+            <span>{isPublishing ? 'Publishing...' : 'Publish Design'}</span>
           </button>
         </div>
 

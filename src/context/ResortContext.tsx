@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import {
   Room,
   Package,
@@ -81,10 +81,10 @@ interface ResortContextType {
   setActiveTab: (tab: ActiveTab) => void;
   resortInfo: ResortInfo;
   setResortInfo: React.Dispatch<React.SetStateAction<ResortInfo>>;
-  updateResortInfo: (info: ResortInfo) => void;
+  updateResortInfo: (info: ResortInfo, customSuccessMsg?: string) => Promise<boolean>;
   paymentSettings: PaymentSettings;
   setPaymentSettings: React.Dispatch<React.SetStateAction<PaymentSettings>>;
-  updatePaymentSettings: (settings: PaymentSettings) => void;
+  updatePaymentSettings: (settings: PaymentSettings) => Promise<boolean>;
   customization: ResortCustomization;
   setCustomization: React.Dispatch<React.SetStateAction<ResortCustomization>>;
   rooms: Room[];
@@ -611,6 +611,9 @@ export const ResortProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   }, [currentCustomerThreadId]);
 
+  const isSavingResortInfoRef = useRef(false);
+  const isSavingPaymentSettingsRef = useRef(false);
+
   // --- FIRESTORE DATABASE INITIALIZATION & REALTIME SYNC ---
   useEffect(() => {
     seedFirestoreIfEmpty(
@@ -629,8 +632,16 @@ export const ResortProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const unsubPackages = subscribePackages((p) => setPackages(p));
     const unsubChat = subscribeChatThreads((t) => setChatThreads(t));
     const unsubSettings = subscribeSettings(
-      (info) => setResortInfo(info),
-      (payment) => setPaymentSettings(payment)
+      (info) => {
+        if (!isSavingResortInfoRef.current && info) {
+          setResortInfo((prev) => ({ ...INITIAL_RESORT_INFO, ...info }));
+        }
+      },
+      (payment) => {
+        if (!isSavingPaymentSettingsRef.current && payment) {
+          setPaymentSettings((prev) => ({ ...INITIAL_PAYMENT_SETTINGS, ...payment }));
+        }
+      }
     );
 
     return () => {
@@ -966,16 +977,42 @@ export const ResortProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     return logEntry;
   };
 
-  const updateResortInfo = (info: ResortInfo) => {
+  const updateResortInfo = async (info: ResortInfo, customSuccessMsg?: string): Promise<boolean> => {
+    isSavingResortInfoRef.current = true;
     setResortInfo(info);
-    saveResortInfoToFirestore(info);
-    showToast('Overall System Portal details & design assets updated.', 'success');
+    safeSave('sltt_resort_info', info);
+    try {
+      await saveResortInfoToFirestore(info);
+      showToast(customSuccessMsg || 'Overall System Portal details & design assets updated.', 'success');
+      return true;
+    } catch (err) {
+      console.error('Error saving resort info to Firestore:', err);
+      showToast('Failed to save changes to cloud database. Please try again.', 'error');
+      return false;
+    } finally {
+      setTimeout(() => {
+        isSavingResortInfoRef.current = false;
+      }, 500);
+    }
   };
 
-  const updatePaymentSettings = (settings: PaymentSettings) => {
+  const updatePaymentSettings = async (settings: PaymentSettings): Promise<boolean> => {
+    isSavingPaymentSettingsRef.current = true;
     setPaymentSettings(settings);
-    savePaymentSettingsToFirestore(settings);
-    showToast('Payment Options and Bank Details saved.', 'success');
+    safeSave('sltt_payment_settings', settings);
+    try {
+      await savePaymentSettingsToFirestore(settings);
+      showToast('Payment Options and Bank Details saved.', 'success');
+      return true;
+    } catch (err) {
+      console.error('Error saving payment settings to Firestore:', err);
+      showToast('Failed to save Payment Options to cloud database.', 'error');
+      return false;
+    } finally {
+      setTimeout(() => {
+        isSavingPaymentSettingsRef.current = false;
+      }, 500);
+    }
   };
 
   const addBooking = (newBooking: Booking) => {
