@@ -850,52 +850,70 @@ export const ResortProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       id: `usr-${Date.now()}`,
       createdAt: new Date().toISOString(),
     };
-    saveAdminUserToFirestore(newUser);
+    saveAdminUserToFirestore(newUser).catch((err) => {
+      console.error('Failed to create admin user in Firestore:', err);
+      showToast('Failed to create user in database.', 'error');
+    });
     setAdminUsers((prev) => [...prev, newUser]);
     showToast(`Staff account for ${newUser.fullName} created successfully.`, 'success');
     return newUser;
   };
 
-  const updateAdminUser = (id: string, updates: Partial<AdminUser>) => {
+  const updateAdminUser = async (id: string, updates: Partial<AdminUser>) => {
     const target = adminUsers.find((u) => u.id === id);
     if (!target) return;
     const updated = { ...target, ...updates };
-    saveAdminUserToFirestore(updated);
-    if (currentAdminUser && currentAdminUser.id === id) {
-      setCurrentAdminUser(updated);
+    try {
+      await saveAdminUserToFirestore(updated);
+      if (currentAdminUser && currentAdminUser.id === id) {
+        setCurrentAdminUser(updated);
+      }
+      setAdminUsers((prev) =>
+        prev.map((u) => (u.id === id ? updated : u))
+      );
+      showToast('User account updated.', 'success');
+    } catch (err) {
+      console.error('Failed to update admin user:', err);
+      showToast('Failed to update user in database.', 'error');
     }
-    setAdminUsers((prev) =>
-      prev.map((u) => (u.id === id ? updated : u))
-    );
-    showToast('User account updated.', 'success');
   };
 
-  const deleteAdminUser = (id: string) => {
+  const deleteAdminUser = async (id: string) => {
     const target = adminUsers.find((u) => u.id === id);
     if (target?.username === 'SLTTESTANCIA_ADMIN') {
       showToast('Cannot delete primary Super Admin account.', 'error');
       return;
     }
-    deleteAdminUserFromFirestore(id);
-    setAdminUsers((prev) => prev.filter((u) => u.id !== id));
-    showToast('User account removed.', 'info');
+    try {
+      await deleteAdminUserFromFirestore(id);
+      setAdminUsers((prev) => prev.filter((u) => u.id !== id));
+      showToast('User account removed.', 'info');
+    } catch (err) {
+      console.error('Failed to delete admin user from Firestore:', err);
+      showToast('Failed to delete user account from database.', 'error');
+    }
   };
 
-  const resetAdminUserPassword = (id: string, newPass: string) => {
+  const resetAdminUserPassword = async (id: string, newPass: string) => {
     const target = adminUsers.find((u) => u.id === id);
     if (!target) return;
     const updated = { ...target, password: newPass };
-    saveAdminUserToFirestore(updated);
-    if (currentAdminUser && currentAdminUser.id === id) {
-      setCurrentAdminUser(updated);
+    try {
+      await saveAdminUserToFirestore(updated);
+      if (currentAdminUser && currentAdminUser.id === id) {
+        setCurrentAdminUser(updated);
+      }
+      setAdminUsers((prev) =>
+        prev.map((u) => (u.id === id ? updated : u))
+      );
+      showToast('Password updated successfully.', 'success');
+    } catch (err) {
+      console.error('Failed to update password:', err);
+      showToast('Failed to update password in database.', 'error');
     }
-    setAdminUsers((prev) =>
-      prev.map((u) => (u.id === id ? updated : u))
-    );
-    showToast('Password updated successfully.', 'success');
   };
 
-  const toggleAdminUserStatus = (id: string) => {
+  const toggleAdminUserStatus = async (id: string) => {
     const target = adminUsers.find((u) => u.id === id);
     if (target?.username === 'SLTTESTANCIA_ADMIN') {
       showToast('Primary Super Admin cannot be deactivated.', 'error');
@@ -903,11 +921,16 @@ export const ResortProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
     if (!target) return;
     const updated = { ...target, isActive: !target.isActive };
-    saveAdminUserToFirestore(updated);
-    setAdminUsers((prev) =>
-      prev.map((u) => (u.id === id ? updated : u))
-    );
-    showToast('User account status updated.', 'info');
+    try {
+      await saveAdminUserToFirestore(updated);
+      setAdminUsers((prev) =>
+        prev.map((u) => (u.id === id ? updated : u))
+      );
+      showToast('User account status updated.', 'info');
+    } catch (err) {
+      console.error('Failed to toggle admin user status:', err);
+      showToast('Failed to update status in database.', 'error');
+    }
   };
 
   const syncAllDataToFirebase = async (): Promise<boolean> => {
@@ -1105,13 +1128,18 @@ export const ResortProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   };
 
-  const deleteBooking = (id: string) => {
-    deleteBookingFromFirestore(id);
-    setBookings((prev) => prev.filter((b) => b.id !== id));
-    showToast('Booking deleted.', 'info');
+  const deleteBooking = async (id: string) => {
+    try {
+      await deleteBookingFromFirestore(id);
+      setBookings((prev) => prev.filter((b) => b.id !== id));
+      showToast('Booking deleted.', 'info');
+    } catch (err) {
+      console.error('Failed to delete booking from Firestore:', err);
+      showToast('Failed to delete booking from database.', 'error');
+    }
   };
 
-  const attachBookingReceipt = (bookingId: string, receiptUrl: string, refCode?: string) => {
+  const attachBookingReceipt = async (bookingId: string, receiptUrl: string, refCode?: string) => {
     const target = bookings.find((b) => b.id === bookingId);
     if (target) {
       const updated: Booking = {
@@ -1119,7 +1147,11 @@ export const ResortProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         paymentReceiptUrl: receiptUrl,
         paymentReferenceCode: refCode || target.paymentReferenceCode,
       };
-      saveBookingToFirestore(updated);
+      try {
+        await saveBookingToFirestore(updated);
+      } catch (err) {
+        console.error('Failed to save booking receipt to Firestore:', err);
+      }
     }
     setBookings((prev) =>
       prev.map((b) =>

@@ -65,6 +65,7 @@ import {
   Maximize2,
   Database,
   RefreshCw,
+  AlertTriangle,
 } from 'lucide-react';
 
 export const AdminDashboard: React.FC = () => {
@@ -202,6 +203,17 @@ export const AdminDashboard: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<string>('All');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [viewingReceiptUrl, setViewingReceiptUrl] = useState<string | null>(null);
+
+  // Custom In-App Confirmation Modal (bypasses browser iframe popup blocking)
+  const [deleteConfirmModal, setDeleteConfirmModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    itemDetails?: string;
+    warningText?: string;
+    confirmButtonText?: string;
+    onConfirm: () => void | Promise<void>;
+  } | null>(null);
 
   // SECTION NAMES MAP FOR BUILDER
   const SECTION_NAMES: Record<SectionId, string> = {
@@ -1400,12 +1412,22 @@ export const AdminDashboard: React.FC = () => {
 
                           {currentAdminUser?.permissions.canDeleteBookings !== false ? (
                             <button
+                              type="button"
                               onClick={() => {
-                                if (confirm(`Are you sure you want to delete booking ${b.referenceNumber}?`)) {
-                                  deleteBooking(b.id);
-                                }
+                                setDeleteConfirmModal({
+                                  isOpen: true,
+                                  title: 'Delete Booking Record',
+                                  message: `Are you sure you want to permanently delete the booking for guest "${b.guestName}"?`,
+                                  itemDetails: `Ref: ${b.referenceNumber} • Unit/Package: ${b.roomName} • Dates: ${b.checkInDate} to ${b.checkOutDate} • Amount: ₱${b.totalAmount.toLocaleString()}`,
+                                  warningText: 'This will remove the reservation record from the resort management system and release any reserved dates.',
+                                  confirmButtonText: 'Delete Booking',
+                                  onConfirm: async () => {
+                                    await deleteBooking(b.id);
+                                    setDeleteConfirmModal(null);
+                                  },
+                                });
                               }}
-                              className="p-1.5 rounded bg-[#0e1710] border border-[#606e60] text-[#ad9e92] hover:text-red-400 cursor-pointer"
+                              className="p-1.5 rounded bg-[#0e1710] border border-[#606e60] text-[#ad9e92] hover:text-red-400 hover:border-red-500/60 cursor-pointer transition-colors"
                               title="Delete Booking"
                             >
                               <Trash2 className="w-4 h-4" />
@@ -1925,8 +1947,22 @@ export const AdminDashboard: React.FC = () => {
                       <span>Edit & Details</span>
                     </button>
                     <button
-                      onClick={() => deleteRoom(r.id)}
-                      className="p-2 rounded-xl bg-[#1c2a20] hover:bg-red-900/40 border border-[#606e60] text-red-400 cursor-pointer"
+                      type="button"
+                      onClick={() => {
+                        setDeleteConfirmModal({
+                          isOpen: true,
+                          title: 'Delete Accommodation Unit',
+                          message: `Are you sure you want to delete unit "${r.name}"?`,
+                          itemDetails: `Category: ${r.category} • Rate: ₱${r.pricePerNight.toLocaleString()} • Capacity: Max ${r.maxGuests} Guests`,
+                          warningText: 'This accommodation will be permanently removed from guest booking catalog.',
+                          confirmButtonText: 'Delete Unit',
+                          onConfirm: async () => {
+                            await deleteRoom(r.id);
+                            setDeleteConfirmModal(null);
+                          },
+                        });
+                      }}
+                      className="p-2 rounded-xl bg-[#1c2a20] hover:bg-red-900/40 border border-[#606e60] text-red-400 cursor-pointer transition-colors"
                       title="Delete Option"
                     >
                       <Trash2 className="w-4 h-4" />
@@ -1975,7 +2011,7 @@ export const AdminDashboard: React.FC = () => {
                     <div>
                       <h3 className="font-bold text-lg font-serif text-[#ebe5de]">{pkg.name}</h3>
                       <p className="text-xs text-[#ad9e92] italic">{pkg.tagline}</p>
-                      <p className="text-xs text-[#c3ccc0] mt-1">Duration: <strong className="text-[#ebe5de]">{pkg.duration}</strong> • Guests: {pkg.recommendedGuests}</p>
+                      <p className="text-xs text-[#c3ccc0] mt-1">Duration: <strong className="text-[#ebe5de]">{pkg.duration}</strong></p>
                     </div>
 
                     <div className="space-y-1 text-xs text-[#c3ccc0] bg-[#0e1710] p-3 rounded-xl border border-[#606e60]/40">
@@ -1998,8 +2034,22 @@ export const AdminDashboard: React.FC = () => {
                       <span>Edit Package</span>
                     </button>
                     <button
-                      onClick={() => deletePackage(pkg.id)}
-                      className="p-2 rounded-xl bg-[#1c2a20] hover:bg-red-900/40 border border-[#606e60] text-red-400 cursor-pointer"
+                      type="button"
+                      onClick={() => {
+                        setDeleteConfirmModal({
+                          isOpen: true,
+                          title: 'Delete Resort Package',
+                          message: `Are you sure you want to delete package "${pkg.name}"?`,
+                          itemDetails: `Price: ₱${pkg.price.toLocaleString()} • Duration: ${pkg.duration}${pkg.tagline ? ` • ${pkg.tagline}` : ''}`,
+                          warningText: 'This package will be permanently removed from public day tour & stay options.',
+                          confirmButtonText: 'Delete Package',
+                          onConfirm: async () => {
+                            await deletePackage(pkg.id);
+                            setDeleteConfirmModal(null);
+                          },
+                        });
+                      }}
+                      className="p-2 rounded-xl bg-[#1c2a20] hover:bg-red-900/40 border border-[#606e60] text-red-400 cursor-pointer transition-colors"
                       title="Delete Package"
                     >
                       <Trash2 className="w-4 h-4" />
@@ -3707,9 +3757,18 @@ export const AdminDashboard: React.FC = () => {
                                 <button
                                   type="button"
                                   onClick={() => {
-                                    if (confirm(`Are you sure you want to delete user account @${u.username}?`)) {
-                                      deleteAdminUser(u.id);
-                                    }
+                                    setDeleteConfirmModal({
+                                      isOpen: true,
+                                      title: 'Delete Staff / Agent Account',
+                                      message: `Are you sure you want to delete user account @${u.username} (${u.fullName})?`,
+                                      itemDetails: `Role: ${u.role} • Status: ${u.isActive ? 'Active' : 'Inactive'} • Permissions: ${Object.entries(u.permissions).filter(([, v]) => v).map(([k]) => k).length} Active Roles`,
+                                      warningText: 'This account will be permanently removed from staff access and database.',
+                                      confirmButtonText: 'Delete Account',
+                                      onConfirm: async () => {
+                                        await deleteAdminUser(u.id);
+                                        setDeleteConfirmModal(null);
+                                      },
+                                    });
                                   }}
                                   className="p-1.5 rounded-lg bg-[#0e1710] border border-[#606e60] text-red-400 hover:text-red-300 hover:border-red-500 transition-colors"
                                   title="Delete User Account"
@@ -5108,6 +5167,55 @@ export const AdminDashboard: React.FC = () => {
                   className="px-6 py-2 rounded-xl bg-[#ad9e92] text-[#1c2a20] font-bold text-xs uppercase"
                 >
                   Close Log
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* CUSTOM UNIVERSAL IN-APP CONFIRMATION MODAL (Reliable in Iframe and Standalone) */}
+        {deleteConfirmModal && deleteConfirmModal.isOpen && (
+          <div className="fixed inset-0 z-[9999] bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="bg-[#132016] border border-red-500/50 rounded-3xl max-w-md w-full p-6 sm:p-7 shadow-2xl text-[#ebe5de] relative space-y-5">
+              <div className="flex items-start gap-4">
+                <div className="p-3 rounded-2xl bg-red-950/80 border border-red-800 text-red-400 shrink-0">
+                  <AlertTriangle className="w-6 h-6" />
+                </div>
+                <div className="space-y-1">
+                  <h3 className="text-lg font-bold font-serif text-[#ebe5de]">{deleteConfirmModal.title}</h3>
+                  <p className="text-xs text-[#c3ccc0] leading-relaxed">{deleteConfirmModal.message}</p>
+                </div>
+              </div>
+
+              {deleteConfirmModal.itemDetails && (
+                <div className="p-3 rounded-xl bg-[#0e1710] border border-[#606e60]/50 text-xs font-mono text-[#ad9e92] break-words">
+                  {deleteConfirmModal.itemDetails}
+                </div>
+              )}
+
+              {deleteConfirmModal.warningText && (
+                <p className="text-[11px] text-red-300/90 font-medium">
+                  ⚠️ {deleteConfirmModal.warningText}
+                </p>
+              )}
+
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-[#606e60]/40">
+                <button
+                  type="button"
+                  onClick={() => setDeleteConfirmModal(null)}
+                  className="px-4 py-2.5 rounded-xl bg-[#0e1710] hover:bg-[#1c2a20] border border-[#606e60] text-[#c3ccc0] hover:text-[#ebe5de] text-xs font-bold cursor-pointer transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    await deleteConfirmModal.onConfirm();
+                  }}
+                  className="px-5 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer shadow-lg shadow-red-950/50 transition-colors"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>{deleteConfirmModal.confirmButtonText || 'Confirm Delete'}</span>
                 </button>
               </div>
             </div>

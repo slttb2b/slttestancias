@@ -2,7 +2,17 @@ import React, { useState, useEffect } from 'react';
 import { useResort } from '../context/ResortContext';
 import { Room, Package, Booking, PaymentMethod, PaymentChannel } from '../types';
 import { ADD_ON_SERVICES } from '../data/resortData';
-import { checkRoomOccupied, OCCUPIED_UNIT_MESSAGE, COMING_SOON_MESSAGE, validateBookingDates, getTodayFormatted, getTomorrowFormatted } from '../utils/bookingUtils';
+import {
+  checkRoomOccupied,
+  checkPackageOccupied,
+  validateBookingAvailability,
+  OCCUPIED_UNIT_MESSAGE,
+  OCCUPIED_PACKAGE_MESSAGE,
+  COMING_SOON_MESSAGE,
+  validateBookingDates,
+  getTodayFormatted,
+  getTomorrowFormatted,
+} from '../utils/bookingUtils';
 import { downloadVoucher } from '../utils/voucher';
 import {
   X,
@@ -192,21 +202,40 @@ export const BookingWizardModal: React.FC = () => {
           alert('Please select a resort package to proceed.');
           return;
         }
-        if (selectedRoom) {
-          const occ = checkRoomOccupied(selectedRoom.id, checkInDate, checkOutDate, rooms, bookings);
-          if (occ.isOccupied) {
-            setOccupiedNotice(occ.isComingSoon ? COMING_SOON_MESSAGE : OCCUPIED_UNIT_MESSAGE);
-            return;
-          }
+
+        const availability = validateBookingAvailability(
+          'package',
+          selectedPackage.id,
+          checkInDate,
+          checkOutDate,
+          rooms,
+          packages,
+          bookings,
+          selectedRoom?.id
+        );
+
+        if (!availability.isValid) {
+          setOccupiedNotice(availability.errorMessage || OCCUPIED_PACKAGE_MESSAGE);
+          return;
         }
       } else {
         if (!selectedRoom) {
           alert('Please select an accommodation unit to proceed.');
           return;
         }
-        const occ = checkRoomOccupied(selectedRoom.id, checkInDate, checkOutDate, rooms, bookings);
-        if (occ.isOccupied) {
-          setOccupiedNotice(occ.isComingSoon ? COMING_SOON_MESSAGE : OCCUPIED_UNIT_MESSAGE);
+
+        const availability = validateBookingAvailability(
+          'room',
+          selectedRoom.id,
+          checkInDate,
+          checkOutDate,
+          rooms,
+          packages,
+          bookings
+        );
+
+        if (!availability.isValid) {
+          setOccupiedNotice(availability.errorMessage || OCCUPIED_UNIT_MESSAGE);
           return;
         }
       }
@@ -237,22 +266,49 @@ export const BookingWizardModal: React.FC = () => {
     }
 
     if (bookingCategory === 'package') {
-      if (selectedRoom) {
-        const occ = checkRoomOccupied(selectedRoom.id, checkInDate, checkOutDate, rooms, bookings);
-        if (occ.isOccupied) {
-          setOccupiedNotice(occ.isComingSoon ? COMING_SOON_MESSAGE : OCCUPIED_UNIT_MESSAGE);
-          setStep(2);
-          return;
-        }
+      if (!selectedPackage) {
+        alert('Please select a package.');
+        setStep(2);
+        return;
+      }
+
+      const availability = validateBookingAvailability(
+        'package',
+        selectedPackage.id,
+        checkInDate,
+        checkOutDate,
+        rooms,
+        packages,
+        bookings,
+        selectedRoom?.id
+      );
+
+      if (!availability.isValid) {
+        setOccupiedNotice(availability.errorMessage || OCCUPIED_PACKAGE_MESSAGE);
+        setStep(2);
+        return;
       }
     } else {
-      if (selectedRoom) {
-        const occ = checkRoomOccupied(selectedRoom.id, checkInDate, checkOutDate, rooms, bookings);
-        if (occ.isOccupied) {
-          setOccupiedNotice(occ.isComingSoon ? COMING_SOON_MESSAGE : OCCUPIED_UNIT_MESSAGE);
-          setStep(2);
-          return;
-        }
+      if (!selectedRoom) {
+        alert('Please select a room/unit.');
+        setStep(2);
+        return;
+      }
+
+      const availability = validateBookingAvailability(
+        'room',
+        selectedRoom.id,
+        checkInDate,
+        checkOutDate,
+        rooms,
+        packages,
+        bookings
+      );
+
+      if (!availability.isValid) {
+        setOccupiedNotice(availability.errorMessage || OCCUPIED_UNIT_MESSAGE);
+        setStep(2);
+        return;
       }
     }
 
@@ -654,24 +710,40 @@ export const BookingWizardModal: React.FC = () => {
                 <div className="grid grid-cols-1 gap-3">
                   {packages.map((pkg) => {
                     const isSelected = selectedPackage?.id === pkg.id;
+                    const pkgOcc = checkPackageOccupied(pkg.id, checkInDate, checkOutDate, packages, bookings);
+                    const isOccupied = pkgOcc.isOccupied;
+
                     return (
                       <div
                         key={pkg.id}
                         onClick={() => {
                           setSelectedPackage(pkg);
-                          setOccupiedNotice(null);
+                          if (isOccupied) {
+                            setOccupiedNotice(OCCUPIED_PACKAGE_MESSAGE);
+                          } else {
+                            setOccupiedNotice(null);
+                          }
                         }}
                         className={`p-4 rounded-2xl border transition-all cursor-pointer flex flex-col sm:flex-row gap-4 ${
-                          isSelected
-                            ? 'bg-[#1c2a20] border-amber-500 text-[#ebe5de] shadow-xl ring-2 ring-amber-500/40'
-                            : 'bg-[#132016] border-[#606e60]/60 text-[#c3ccc0] hover:bg-[#1c2a20]'
+                          isOccupied
+                            ? isSelected
+                              ? 'bg-red-950/80 border-red-500 text-white shadow-lg'
+                              : 'bg-[#181214] border-red-900/60 text-[#c3ccc0] hover:bg-red-950/40'
+                            : isSelected
+                              ? 'bg-[#1c2a20] border-amber-500 text-[#ebe5de] shadow-xl ring-2 ring-amber-500/40'
+                              : 'bg-[#132016] border-[#606e60]/60 text-[#c3ccc0] hover:bg-[#1c2a20]'
                         }`}
                       >
                         <div className="sm:w-40 h-32 shrink-0 rounded-xl overflow-hidden relative border border-[#606e60]/40">
                           <img src={pkg.featuredImage} alt={pkg.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                          {pkg.isPopular && (
+                          {pkg.isPopular && !isOccupied && (
                             <span className="absolute top-2 left-2 bg-amber-600 text-white text-[9px] font-extrabold px-2 py-0.5 rounded uppercase tracking-wider shadow-md flex items-center gap-1">
                               <Sparkles className="w-2.5 h-2.5 text-amber-200" /> Popular
+                            </span>
+                          )}
+                          {isOccupied && (
+                            <span className="absolute top-2 left-2 bg-red-600 text-white text-[9px] font-extrabold px-2 py-0.5 rounded uppercase tracking-wider shadow-md flex items-center gap-1">
+                              <AlertTriangle className="w-2.5 h-2.5 text-amber-200" /> Reserved
                             </span>
                           )}
                         </div>
@@ -681,13 +753,18 @@ export const BookingWizardModal: React.FC = () => {
                             <div>
                               <h5 className="font-bold text-base text-[#ebe5de] font-serif flex items-center gap-2">
                                 {pkg.name}
-                                {isSelected && (
+                                {isSelected && !isOccupied && (
                                   <span className="text-[10px] bg-amber-600 text-white font-extrabold px-2 py-0.5 rounded-full flex items-center gap-1">
                                     <Check className="w-3 h-3 text-white" /> Selected
                                   </span>
                                 )}
+                                {isOccupied && (
+                                  <span className="text-[10px] bg-red-600 text-white font-extrabold px-2 py-0.5 rounded-full flex items-center gap-1">
+                                    <AlertTriangle className="w-3 h-3 text-amber-200" /> Occupied
+                                  </span>
+                                )}
                               </h5>
-                              <span className="text-[11px] text-[#ad9e92] font-semibold">{pkg.duration} • Rec. {pkg.recommendedGuests}</span>
+                              <span className="text-[11px] text-[#ad9e92] font-semibold">{pkg.duration}{pkg.tagline ? ` • ${pkg.tagline}` : ''}</span>
                             </div>
                             <div className="text-right shrink-0">
                               <span className="font-bold text-amber-300 text-xl font-serif">₱{pkg.price.toLocaleString()}</span>
@@ -696,6 +773,11 @@ export const BookingWizardModal: React.FC = () => {
                           </div>
 
                           <p className="text-xs text-[#c3ccc0]">{pkg.description}</p>
+                          {isOccupied && (
+                            <p className="text-[10px] text-red-300 font-semibold mt-0.5">
+                              Reserved / Occupied for selected dates
+                            </p>
+                          )}
 
                           {/* Inclusions summary */}
                           <div className="pt-2 border-t border-[#606e60]/40">

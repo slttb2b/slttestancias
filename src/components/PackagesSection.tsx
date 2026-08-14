@@ -19,6 +19,11 @@ export const PackagesSection: React.FC = () => {
     setPackages(updated);
   };
 
+  const handleUpdatePkgTagline = (pkgId: string, newTagline: string) => {
+    const updated = packages.map((p) => (p.id === pkgId ? { ...p, tagline: newTagline } : p));
+    setPackages(updated);
+  };
+
   const handleUpdatePkgDesc = (pkgId: string, newDesc: string) => {
     const updated = packages.map((p) => (p.id === pkgId ? { ...p, description: newDesc } : p));
     setPackages(updated);
@@ -119,26 +124,33 @@ export const PackagesSection: React.FC = () => {
 
                 {/* Body Content */}
                 <div className="p-6 space-y-6">
-                  {/* Price Banner */}
-                  <div className={`flex items-baseline gap-1 border-b pb-4 ${
-                    isLight ? 'border-[#e0d9cc]' : 'border-[#606e60]/40'
-                  }`}>
-                    <span className={`text-3xl font-bold font-serif ${
-                      isLight ? 'text-[#1c2a20]' : 'text-[#ebe5de]'
+                  {/* Price Banner & Tagline */}
+                  <div>
+                    <div className={`flex items-baseline gap-1 border-b pb-3 ${
+                      isLight ? 'border-[#e0d9cc]' : 'border-[#606e60]/40'
                     }`}>
-                      ₱{pkg.price.toLocaleString()}
-                    </span>
-                    <span className={`text-xs font-light ${
-                      isLight ? 'text-[#3c5241]' : 'text-[#c3ccc0]'
-                    }`}>/ package deal</span>
-                  </div>
+                      <span className={`text-3xl font-bold font-serif ${
+                        isLight ? 'text-[#1c2a20]' : 'text-[#ebe5de]'
+                      }`}>
+                        ₱{pkg.price.toLocaleString()}
+                      </span>
+                      <span className={`text-xs font-light ${
+                        isLight ? 'text-[#3c5241]' : 'text-[#c3ccc0]'
+                      }`}>/ package deal</span>
+                    </div>
 
-                  <p className={`text-xs font-medium flex items-center gap-1.5 ${
-                    isLight ? 'text-[#2d4536]' : 'text-[#c3ccc0]'
-                  }`}>
-                    <Users className={`w-4 h-4 ${isLight ? 'text-[#2d4536]' : 'text-[#ad9e92]'}`} />
-                    Recommended for: {pkg.recommendedGuests}
-                  </p>
+                    {pkg.tagline && (
+                      <p className={`text-xs font-medium italic mt-2.5 ${
+                        isLight ? 'text-[#2d4536]' : 'text-[#ad9e92]'
+                      }`}>
+                        <EditableText
+                          value={pkg.tagline}
+                          onChange={(val) => handleUpdatePkgTagline(pkg.id, val)}
+                          as="span"
+                        />
+                      </p>
+                    )}
+                  </div>
 
                   {/* Inclusions List */}
                   <div className="space-y-2">
