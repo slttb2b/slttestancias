@@ -17,6 +17,7 @@ import {
   AdminUser,
   AdminUserRole,
   AdminUserPermissions,
+  AddOnService,
 } from '../types';
 import {
   INITIAL_RESORT_INFO,
@@ -28,6 +29,7 @@ import {
   INITIAL_REVIEWS,
   INITIAL_BOOKINGS,
   INITIAL_CHAT_THREADS,
+  ADD_ON_SERVICES,
   DEFAULT_NOTIFICATION_TEMPLATES,
   formatNotificationMessage,
 } from '../data/resortData';
@@ -37,6 +39,7 @@ import {
   subscribeBookings,
   subscribeRooms,
   subscribePackages,
+  subscribeAddOns,
   subscribeChatThreads,
   subscribeSettings,
   saveAdminUserToFirestore,
@@ -47,6 +50,8 @@ import {
   deleteRoomFromFirestore,
   savePackageToFirestore,
   deletePackageFromFirestore,
+  saveAddOnToFirestore,
+  deleteAddOnFromFirestore,
   saveChatThreadToFirestore,
   deleteChatThreadFromFirestore,
   saveResortInfoToFirestore,
@@ -149,6 +154,14 @@ interface ResortContextType {
   addPackage: (pkg: Package) => void;
   updatePackage: (pkg: Package) => void;
   deletePackage: (pkgId: string) => void;
+
+  // Add-On Service actions
+  addOns: AddOnService[];
+  setAddOns: React.Dispatch<React.SetStateAction<AddOnService[]>>;
+  addAddOn: (addon: AddOnService) => void;
+  updateAddOn: (addon: AddOnService) => void;
+  deleteAddOn: (addonId: string) => void;
+  toggleAddOnActive: (addonId: string) => void;
 
   // Helper methods
   getRoomById: (id: string) => Room | undefined;
@@ -419,6 +432,19 @@ export const ResortProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     return INITIAL_PACKAGES;
   });
 
+  const [addOns, setAddOns] = useState<AddOnService[]>(() => {
+    try {
+      const saved = localStorage.getItem('sltt_addons_v1');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {
+      console.error('Error loading add-ons:', e);
+    }
+    return ADD_ON_SERVICES;
+  });
+
   const [amenities, setAmenities] = useState<Amenity[]>(() => {
     try {
       const saved = localStorage.getItem('sltt_amenities_v2');
@@ -511,6 +537,10 @@ export const ResortProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   useEffect(() => {
     safeSave('sltt_packages', packages);
   }, [packages]);
+
+  useEffect(() => {
+    safeSave('sltt_addons_v1', addOns);
+  }, [addOns]);
 
   useEffect(() => {
     safeSave('sltt_amenities_v2', amenities);
@@ -623,13 +653,15 @@ export const ResortProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       INITIAL_BOOKINGS,
       INITIAL_RESORT_INFO,
       INITIAL_PAYMENT_SETTINGS,
-      INITIAL_CHAT_THREADS
+      INITIAL_CHAT_THREADS,
+      ADD_ON_SERVICES
     );
 
     const unsubUsers = subscribeAdminUsers((users) => setAdminUsers(users));
     const unsubBookings = subscribeBookings((b) => setBookings(b));
     const unsubRooms = subscribeRooms((r) => setRooms(r));
     const unsubPackages = subscribePackages((p) => setPackages(p));
+    const unsubAddOns = subscribeAddOns((a) => setAddOns(a));
     const unsubChat = subscribeChatThreads((t) => setChatThreads(t));
     const unsubSettings = subscribeSettings(
       (info) => {
@@ -649,6 +681,7 @@ export const ResortProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       unsubBookings();
       unsubRooms();
       unsubPackages();
+      unsubAddOns();
       unsubChat();
       unsubSettings();
     };
@@ -850,70 +883,52 @@ export const ResortProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       id: `usr-${Date.now()}`,
       createdAt: new Date().toISOString(),
     };
-    saveAdminUserToFirestore(newUser).catch((err) => {
-      console.error('Failed to create admin user in Firestore:', err);
-      showToast('Failed to create user in database.', 'error');
-    });
+    saveAdminUserToFirestore(newUser);
     setAdminUsers((prev) => [...prev, newUser]);
     showToast(`Staff account for ${newUser.fullName} created successfully.`, 'success');
     return newUser;
   };
 
-  const updateAdminUser = async (id: string, updates: Partial<AdminUser>) => {
+  const updateAdminUser = (id: string, updates: Partial<AdminUser>) => {
     const target = adminUsers.find((u) => u.id === id);
     if (!target) return;
     const updated = { ...target, ...updates };
-    try {
-      await saveAdminUserToFirestore(updated);
-      if (currentAdminUser && currentAdminUser.id === id) {
-        setCurrentAdminUser(updated);
-      }
-      setAdminUsers((prev) =>
-        prev.map((u) => (u.id === id ? updated : u))
-      );
-      showToast('User account updated.', 'success');
-    } catch (err) {
-      console.error('Failed to update admin user:', err);
-      showToast('Failed to update user in database.', 'error');
+    saveAdminUserToFirestore(updated);
+    if (currentAdminUser && currentAdminUser.id === id) {
+      setCurrentAdminUser(updated);
     }
+    setAdminUsers((prev) =>
+      prev.map((u) => (u.id === id ? updated : u))
+    );
+    showToast('User account updated.', 'success');
   };
 
-  const deleteAdminUser = async (id: string) => {
+  const deleteAdminUser = (id: string) => {
     const target = adminUsers.find((u) => u.id === id);
     if (target?.username === 'SLTTESTANCIA_ADMIN') {
       showToast('Cannot delete primary Super Admin account.', 'error');
       return;
     }
-    try {
-      await deleteAdminUserFromFirestore(id);
-      setAdminUsers((prev) => prev.filter((u) => u.id !== id));
-      showToast('User account removed.', 'info');
-    } catch (err) {
-      console.error('Failed to delete admin user from Firestore:', err);
-      showToast('Failed to delete user account from database.', 'error');
-    }
+    deleteAdminUserFromFirestore(id);
+    setAdminUsers((prev) => prev.filter((u) => u.id !== id));
+    showToast('User account removed.', 'info');
   };
 
-  const resetAdminUserPassword = async (id: string, newPass: string) => {
+  const resetAdminUserPassword = (id: string, newPass: string) => {
     const target = adminUsers.find((u) => u.id === id);
     if (!target) return;
     const updated = { ...target, password: newPass };
-    try {
-      await saveAdminUserToFirestore(updated);
-      if (currentAdminUser && currentAdminUser.id === id) {
-        setCurrentAdminUser(updated);
-      }
-      setAdminUsers((prev) =>
-        prev.map((u) => (u.id === id ? updated : u))
-      );
-      showToast('Password updated successfully.', 'success');
-    } catch (err) {
-      console.error('Failed to update password:', err);
-      showToast('Failed to update password in database.', 'error');
+    saveAdminUserToFirestore(updated);
+    if (currentAdminUser && currentAdminUser.id === id) {
+      setCurrentAdminUser(updated);
     }
+    setAdminUsers((prev) =>
+      prev.map((u) => (u.id === id ? updated : u))
+    );
+    showToast('Password updated successfully.', 'success');
   };
 
-  const toggleAdminUserStatus = async (id: string) => {
+  const toggleAdminUserStatus = (id: string) => {
     const target = adminUsers.find((u) => u.id === id);
     if (target?.username === 'SLTTESTANCIA_ADMIN') {
       showToast('Primary Super Admin cannot be deactivated.', 'error');
@@ -921,16 +936,11 @@ export const ResortProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
     if (!target) return;
     const updated = { ...target, isActive: !target.isActive };
-    try {
-      await saveAdminUserToFirestore(updated);
-      setAdminUsers((prev) =>
-        prev.map((u) => (u.id === id ? updated : u))
-      );
-      showToast('User account status updated.', 'info');
-    } catch (err) {
-      console.error('Failed to toggle admin user status:', err);
-      showToast('Failed to update status in database.', 'error');
-    }
+    saveAdminUserToFirestore(updated);
+    setAdminUsers((prev) =>
+      prev.map((u) => (u.id === id ? updated : u))
+    );
+    showToast('User account status updated.', 'info');
   };
 
   const syncAllDataToFirebase = async (): Promise<boolean> => {
@@ -942,7 +952,8 @@ export const ResortProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       bookings,
       resortInfo,
       paymentSettings,
-      chatThreads
+      chatThreads,
+      addOns
     );
     if (success) {
       showToast('All collections successfully synchronized to Firebase Firestore!', 'success');
@@ -1128,18 +1139,13 @@ export const ResortProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   };
 
-  const deleteBooking = async (id: string) => {
-    try {
-      await deleteBookingFromFirestore(id);
-      setBookings((prev) => prev.filter((b) => b.id !== id));
-      showToast('Booking deleted.', 'info');
-    } catch (err) {
-      console.error('Failed to delete booking from Firestore:', err);
-      showToast('Failed to delete booking from database.', 'error');
-    }
+  const deleteBooking = (id: string) => {
+    deleteBookingFromFirestore(id);
+    setBookings((prev) => prev.filter((b) => b.id !== id));
+    showToast('Booking deleted.', 'info');
   };
 
-  const attachBookingReceipt = async (bookingId: string, receiptUrl: string, refCode?: string) => {
+  const attachBookingReceipt = (bookingId: string, receiptUrl: string, refCode?: string) => {
     const target = bookings.find((b) => b.id === bookingId);
     if (target) {
       const updated: Booking = {
@@ -1147,11 +1153,7 @@ export const ResortProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         paymentReceiptUrl: receiptUrl,
         paymentReferenceCode: refCode || target.paymentReferenceCode,
       };
-      try {
-        await saveBookingToFirestore(updated);
-      } catch (err) {
-        console.error('Failed to save booking receipt to Firestore:', err);
-      }
+      saveBookingToFirestore(updated);
     }
     setBookings((prev) =>
       prev.map((b) =>
@@ -1269,6 +1271,34 @@ export const ResortProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     showToast('Package removed.', 'info');
   };
 
+  const addAddOn = (newAddon: AddOnService) => {
+    saveAddOnToFirestore(newAddon);
+    setAddOns((prev) => [...prev, newAddon]);
+    showToast(`Add-on "${newAddon.name}" added successfully.`, 'success');
+  };
+
+  const updateAddOn = (updatedAddon: AddOnService) => {
+    saveAddOnToFirestore(updatedAddon);
+    setAddOns((prev) => prev.map((a) => (a.id === updatedAddon.id ? updatedAddon : a)));
+    showToast(`Add-on "${updatedAddon.name}" updated.`, 'success');
+  };
+
+  const deleteAddOn = (addonId: string) => {
+    deleteAddOnFromFirestore(addonId);
+    setAddOns((prev) => prev.filter((a) => a.id !== addonId));
+    showToast('Add-on deleted.', 'info');
+  };
+
+  const toggleAddOnActive = (addonId: string) => {
+    const target = addOns.find((a) => a.id === addonId);
+    if (!target) return;
+    const currentActive = target.isActive !== false;
+    const updated: AddOnService = { ...target, isActive: !currentActive };
+    saveAddOnToFirestore(updated);
+    setAddOns((prev) => prev.map((a) => (a.id === addonId ? updated : a)));
+    showToast(`Add-on status set to ${!currentActive ? 'Active' : 'Inactive'}.`, 'info');
+  };
+
   const getRoomById = (id: string) => rooms.find((r) => r.id === id);
 
   const getBookingByReference = (ref: string) =>
@@ -1332,6 +1362,12 @@ export const ResortProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         addPackage,
         updatePackage,
         deletePackage,
+        addOns,
+        setAddOns,
+        addAddOn,
+        updateAddOn,
+        deleteAddOn,
+        toggleAddOnActive,
         getRoomById,
         getBookingByReference,
         notificationTemplates,

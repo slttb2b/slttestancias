@@ -243,19 +243,34 @@ export const generateVoucherHTML = (booking: Booking, resortInfo: ResortInfo): s
       <table class="table-details">
         <thead>
           <tr>
-            <th>Accommodation</th>
+            <th>Accommodation Unit</th>
+            <th>Capacity</th>
             <th>Check-In Date</th>
             <th>Check-Out Date</th>
-            <th>Duration</th>
+            <th>Rate / Duration</th>
           </tr>
         </thead>
         <tbody>
-          <tr>
-            <td><strong>${booking.roomName}</strong></td>
-            <td>${booking.checkInDate} (2:00 PM)</td>
-            <td>${booking.checkOutDate} (12:00 PM)</td>
-            <td>${booking.numberOfNights} Night(s)</td>
-          </tr>
+          ${booking.allocatedRooms && booking.allocatedRooms.length > 0
+            ? booking.allocatedRooms.map(rm => `
+              <tr>
+                <td><strong>${rm.name}</strong> <span style="font-size: 11px; color: #556b5a;">(${rm.category || 'Standard'})</span></td>
+                <td>Up to ${rm.maxGuests} Guests</td>
+                <td>${booking.checkInDate} (2:00 PM)</td>
+                <td>${booking.checkOutDate} (12:00 PM)</td>
+                <td>₱${rm.pricePerNight.toLocaleString()} / night</td>
+              </tr>
+            `).join('')
+            : `
+              <tr>
+                <td><strong>${booking.roomName}</strong></td>
+                <td>${booking.adultsCount + booking.childrenCount} Guests</td>
+                <td>${booking.checkInDate} (2:00 PM)</td>
+                <td>${booking.checkOutDate} (12:00 PM)</td>
+                <td>${booking.numberOfNights} Night(s)</td>
+              </tr>
+            `
+          }
         </tbody>
       </table>
 

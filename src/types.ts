@@ -114,6 +114,8 @@ export interface AddOnService {
   note?: string;
   icon?: string;
   priceDisplay?: string;
+  category?: 'Dining' | 'Transport' | 'Wellness' | 'Activities' | 'Equipment & Rentals' | 'Events & Decor' | 'General';
+  isActive?: boolean;
 }
 
 export interface Booking {
@@ -131,6 +133,13 @@ export interface Booking {
   numberOfNights: number;
   adultsCount: number;
   childrenCount: number;
+  allocatedRooms?: {
+    id: string;
+    name: string;
+    category?: string;
+    pricePerNight: number;
+    maxGuests: number;
+  }[];
   selectedAddOns: {
     id: string;
     name: string;

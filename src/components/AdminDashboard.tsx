@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { useResort } from '../context/ResortContext';
-import { BookingStatus, Room, Package, PaymentSettings, ResortInfo, ResortDesignAssets, SectionId, Booking, NotificationLog, AdminUser, AdminUserRole, AdminUserPermissions } from '../types';
+import { BookingStatus, Room, Package, AddOnService, PaymentSettings, ResortInfo, ResortDesignAssets, SectionId, Booking, NotificationLog, AdminUser, AdminUserRole, AdminUserPermissions } from '../types';
 import { formatNotificationMessage } from '../data/resortData';
 import { downloadVoucher } from '../utils/voucher';
 import { uploadImageToFirebaseStorage } from '../services/storageService';
@@ -65,7 +65,8 @@ import {
   Maximize2,
   Database,
   RefreshCw,
-  AlertTriangle,
+  Gift,
+  Tag,
 } from 'lucide-react';
 
 export const AdminDashboard: React.FC = () => {
@@ -86,6 +87,11 @@ export const AdminDashboard: React.FC = () => {
     addPackage,
     updatePackage,
     deletePackage,
+    addOns,
+    addAddOn,
+    updateAddOn,
+    deleteAddOn,
+    toggleAddOnActive,
     resortInfo,
     updateResortInfo,
     paymentSettings,
@@ -116,7 +122,7 @@ export const AdminDashboard: React.FC = () => {
   const [passwordInput, setPasswordInput] = useState('');
   const [loginError, setLoginError] = useState<string | null>(null);
 
-  const [adminTab, setAdminTab] = useState<'bookings' | 'chat' | 'rooms' | 'packages' | 'builder' | 'system' | 'payments' | 'notifications' | 'users'>('bookings');
+  const [adminTab, setAdminTab] = useState<'bookings' | 'chat' | 'rooms' | 'packages' | 'addons' | 'builder' | 'system' | 'payments' | 'notifications' | 'users'>('bookings');
 
   // USER MANAGEMENT & SUPER ADMIN STATE
   const [userSearchQuery, setUserSearchQuery] = useState('');
@@ -204,17 +210,6 @@ export const AdminDashboard: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [viewingReceiptUrl, setViewingReceiptUrl] = useState<string | null>(null);
 
-  // Custom In-App Confirmation Modal (bypasses browser iframe popup blocking)
-  const [deleteConfirmModal, setDeleteConfirmModal] = useState<{
-    isOpen: boolean;
-    title: string;
-    message: string;
-    itemDetails?: string;
-    warningText?: string;
-    confirmButtonText?: string;
-    onConfirm: () => void | Promise<void>;
-  } | null>(null);
-
   // SECTION NAMES MAP FOR BUILDER
   const SECTION_NAMES: Record<SectionId, string> = {
     hero: '1. Homepage Hero & Quick Search Bar',
@@ -270,6 +265,23 @@ export const AdminDashboard: React.FC = () => {
   });
   const [newInclusionInput, setNewInclusionInput] = useState('');
   const [newPkgInclusionInput, setNewPkgInclusionInput] = useState('');
+
+  // ADD-ON EDIT / ADD STATE
+  const [editingAddOn, setEditingAddOn] = useState<AddOnService | null>(null);
+  const [isAddingAddOn, setIsAddingAddOn] = useState(false);
+  const [selectedAddOnCategoryFilter, setSelectedAddOnCategoryFilter] = useState<string>('All');
+  const [addOnSearchQuery, setAddOnSearchQuery] = useState<string>('');
+  const [newAddOnData, setNewAddOnData] = useState<Partial<AddOnService>>({
+    name: '',
+    price: 500,
+    unit: 'per stay',
+    description: '',
+    note: '',
+    icon: '✨',
+    priceDisplay: '',
+    category: 'General',
+    isActive: true,
+  });
 
   // SYSTEM / RESORT DETAILS STATE
   const [systemForm, setSystemForm] = useState<ResortInfo>(resortInfo);
@@ -540,6 +552,35 @@ export const AdminDashboard: React.FC = () => {
     };
     addPackage(created);
     setIsAddingPackage(false);
+  };
+
+  const handleSaveEditedAddOn = () => {
+    if (!editingAddOn) return;
+    updateAddOn(editingAddOn);
+    setEditingAddOn(null);
+    showToast('Add-on service updated successfully!', 'success');
+  };
+
+  const handleCreateAddOn = () => {
+    if (!newAddOnData.name) {
+      alert('Please provide an Add-On name.');
+      return;
+    }
+    const created: AddOnService = {
+      id: `addon-${Date.now()}`,
+      name: newAddOnData.name,
+      price: Number(newAddOnData.price) || 0,
+      unit: newAddOnData.unit || 'per stay',
+      description: newAddOnData.description || '',
+      note: newAddOnData.note || '',
+      icon: newAddOnData.icon || '✨',
+      priceDisplay: newAddOnData.priceDisplay || '',
+      category: newAddOnData.category || 'General',
+      isActive: newAddOnData.isActive !== false,
+    };
+    addAddOn(created);
+    setIsAddingAddOn(false);
+    showToast(`Add-on "${created.name}" created successfully!`, 'success');
   };
 
   const handleFileUploadPackageImg = async (e: React.ChangeEvent<HTMLInputElement>, isEdit: boolean) => {
@@ -1207,6 +1248,18 @@ export const AdminDashboard: React.FC = () => {
                 <Sparkles className="w-4 h-4" />
                 <span>Resort Packages ({packages.length})</span>
               </button>
+
+              <button
+                onClick={() => setAdminTab('addons')}
+                className={`py-3 px-5 text-xs font-bold uppercase tracking-wider transition-all border-b-2 whitespace-nowrap cursor-pointer flex items-center gap-2 ${
+                  adminTab === 'addons'
+                    ? 'border-[#ad9e92] text-[#ad9e92] bg-[#ad9e92]/10 rounded-t-xl'
+                    : 'border-transparent text-[#c3ccc0] hover:text-[#ebe5de]'
+                }`}
+              >
+                <Gift className="w-4 h-4 text-[#ad9e92]" />
+                <span>Add-Ons & Services ({addOns.length})</span>
+              </button>
             </>
           )}
 
@@ -1412,22 +1465,12 @@ export const AdminDashboard: React.FC = () => {
 
                           {currentAdminUser?.permissions.canDeleteBookings !== false ? (
                             <button
-                              type="button"
                               onClick={() => {
-                                setDeleteConfirmModal({
-                                  isOpen: true,
-                                  title: 'Delete Booking Record',
-                                  message: `Are you sure you want to permanently delete the booking for guest "${b.guestName}"?`,
-                                  itemDetails: `Ref: ${b.referenceNumber} • Unit/Package: ${b.roomName} • Dates: ${b.checkInDate} to ${b.checkOutDate} • Amount: ₱${b.totalAmount.toLocaleString()}`,
-                                  warningText: 'This will remove the reservation record from the resort management system and release any reserved dates.',
-                                  confirmButtonText: 'Delete Booking',
-                                  onConfirm: async () => {
-                                    await deleteBooking(b.id);
-                                    setDeleteConfirmModal(null);
-                                  },
-                                });
+                                if (confirm(`Are you sure you want to delete booking ${b.referenceNumber}?`)) {
+                                  deleteBooking(b.id);
+                                }
                               }}
-                              className="p-1.5 rounded bg-[#0e1710] border border-[#606e60] text-[#ad9e92] hover:text-red-400 hover:border-red-500/60 cursor-pointer transition-colors"
+                              className="p-1.5 rounded bg-[#0e1710] border border-[#606e60] text-[#ad9e92] hover:text-red-400 cursor-pointer"
                               title="Delete Booking"
                             >
                               <Trash2 className="w-4 h-4" />
@@ -1947,22 +1990,8 @@ export const AdminDashboard: React.FC = () => {
                       <span>Edit & Details</span>
                     </button>
                     <button
-                      type="button"
-                      onClick={() => {
-                        setDeleteConfirmModal({
-                          isOpen: true,
-                          title: 'Delete Accommodation Unit',
-                          message: `Are you sure you want to delete unit "${r.name}"?`,
-                          itemDetails: `Category: ${r.category} • Rate: ₱${r.pricePerNight.toLocaleString()} • Capacity: Max ${r.maxGuests} Guests`,
-                          warningText: 'This accommodation will be permanently removed from guest booking catalog.',
-                          confirmButtonText: 'Delete Unit',
-                          onConfirm: async () => {
-                            await deleteRoom(r.id);
-                            setDeleteConfirmModal(null);
-                          },
-                        });
-                      }}
-                      className="p-2 rounded-xl bg-[#1c2a20] hover:bg-red-900/40 border border-[#606e60] text-red-400 cursor-pointer transition-colors"
+                      onClick={() => deleteRoom(r.id)}
+                      className="p-2 rounded-xl bg-[#1c2a20] hover:bg-red-900/40 border border-[#606e60] text-red-400 cursor-pointer"
                       title="Delete Option"
                     >
                       <Trash2 className="w-4 h-4" />
@@ -2011,7 +2040,7 @@ export const AdminDashboard: React.FC = () => {
                     <div>
                       <h3 className="font-bold text-lg font-serif text-[#ebe5de]">{pkg.name}</h3>
                       <p className="text-xs text-[#ad9e92] italic">{pkg.tagline}</p>
-                      <p className="text-xs text-[#c3ccc0] mt-1">Duration: <strong className="text-[#ebe5de]">{pkg.duration}</strong></p>
+                      <p className="text-xs text-[#c3ccc0] mt-1">Duration: <strong className="text-[#ebe5de]">{pkg.duration}</strong> • Guests: {pkg.recommendedGuests}</p>
                     </div>
 
                     <div className="space-y-1 text-xs text-[#c3ccc0] bg-[#0e1710] p-3 rounded-xl border border-[#606e60]/40">
@@ -2034,22 +2063,8 @@ export const AdminDashboard: React.FC = () => {
                       <span>Edit Package</span>
                     </button>
                     <button
-                      type="button"
-                      onClick={() => {
-                        setDeleteConfirmModal({
-                          isOpen: true,
-                          title: 'Delete Resort Package',
-                          message: `Are you sure you want to delete package "${pkg.name}"?`,
-                          itemDetails: `Price: ₱${pkg.price.toLocaleString()} • Duration: ${pkg.duration}${pkg.tagline ? ` • ${pkg.tagline}` : ''}`,
-                          warningText: 'This package will be permanently removed from public day tour & stay options.',
-                          confirmButtonText: 'Delete Package',
-                          onConfirm: async () => {
-                            await deletePackage(pkg.id);
-                            setDeleteConfirmModal(null);
-                          },
-                        });
-                      }}
-                      className="p-2 rounded-xl bg-[#1c2a20] hover:bg-red-900/40 border border-[#606e60] text-red-400 cursor-pointer transition-colors"
+                      onClick={() => deletePackage(pkg.id)}
+                      className="p-2 rounded-xl bg-[#1c2a20] hover:bg-red-900/40 border border-[#606e60] text-red-400 cursor-pointer"
                       title="Delete Package"
                     >
                       <Trash2 className="w-4 h-4" />
@@ -2057,6 +2072,236 @@ export const AdminDashboard: React.FC = () => {
                   </div>
                 </div>
               ))}
+            </div>
+          </div>
+        )}
+
+        {/* ADD-ONS & SERVICES MANAGEMENT TAB */}
+        {adminTab === 'addons' && (
+          <div className="bg-[#132016] border border-[#606e60] rounded-3xl p-6 sm:p-8 space-y-6 shadow-2xl">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#606e60]/60 pb-5">
+              <div>
+                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-950/60 border border-amber-800/40 text-amber-300 text-xs font-bold mb-2">
+                  <Gift className="w-3.5 h-3.5" />
+                  <span>Resort Experiences & Add-Ons</span>
+                </div>
+                <h2 className="text-2xl font-bold font-serif text-[#ebe5de]">Add-On Services & Extras Management</h2>
+                <p className="text-xs text-[#c3ccc0] mt-0.5">
+                  Create, edit, toggle active status, and remove add-on experiences available for guests during booking and checkout.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setNewAddOnData({
+                    name: '',
+                    price: 500,
+                    unit: 'per stay',
+                    description: '',
+                    note: '',
+                    icon: '✨',
+                    priceDisplay: '',
+                    category: 'General',
+                    isActive: true,
+                  });
+                  setIsAddingAddOn(true);
+                }}
+                className="px-5 py-2.5 rounded-xl bg-[#ad9e92] hover:bg-[#c3ccc0] text-[#1c2a20] font-extrabold text-xs uppercase flex items-center gap-2 cursor-pointer shadow-lg transition-colors shrink-0"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Add New Add-On</span>
+              </button>
+            </div>
+
+            {/* Quick Metrics Bar */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="p-4 rounded-2xl bg-[#0e1710] border border-[#606e60]/60 space-y-1">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-[#c3ccc0]">Total Add-Ons</span>
+                <p className="text-2xl font-bold text-[#ebe5de] font-serif">{addOns.length}</p>
+                <p className="text-[10px] text-[#ad9e92]">Registered experiences & services</p>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-[#0e1710] border border-[#606e60]/60 space-y-1">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-[#c3ccc0]">Active for Booking</span>
+                <p className="text-2xl font-bold text-emerald-400 font-serif">
+                  {addOns.filter((a) => a.isActive !== false).length}
+                </p>
+                <p className="text-[10px] text-emerald-400/90 font-medium">Visible to booking guests</p>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-[#0e1710] border border-[#606e60]/60 space-y-1">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-[#c3ccc0]">Inactive / Hidden</span>
+                <p className="text-2xl font-bold text-amber-400 font-serif">
+                  {addOns.filter((a) => a.isActive === false).length}
+                </p>
+                <p className="text-[10px] text-amber-400/90 font-medium">Temporarily paused</p>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-[#0e1710] border border-[#606e60]/60 space-y-1">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-[#c3ccc0]">Categories</span>
+                <p className="text-2xl font-bold text-blue-400 font-serif">
+                  {Array.from(new Set(addOns.map((a) => a.category || 'General'))).length}
+                </p>
+                <p className="text-[10px] text-blue-400/90">Dining, Activities, Transport, etc.</p>
+              </div>
+            </div>
+
+            {/* Filter & Search Bar */}
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-2">
+              {/* Category Pills */}
+              <div className="flex flex-wrap gap-1.5">
+                {(['All', 'Dining', 'Activities', 'Transport', 'Wellness', 'Equipment & Rentals', 'Events & Decor', 'General'] as const).map((cat) => (
+                  <button
+                    key={cat}
+                    type="button"
+                    onClick={() => setSelectedAddOnCategoryFilter(cat)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                      selectedAddOnCategoryFilter === cat
+                        ? 'bg-[#ad9e92] text-[#1c2a20] shadow-md font-extrabold'
+                        : 'bg-[#0e1710] border border-[#606e60]/60 text-[#c3ccc0] hover:text-[#ebe5de] hover:border-[#ad9e92]'
+                    }`}
+                  >
+                    {cat}
+                  </button>
+                ))}
+              </div>
+
+              {/* Search Bar */}
+              <div className="relative min-w-[240px]">
+                <Search className="w-4 h-4 absolute left-3 top-3 text-[#c3ccc0]" />
+                <input
+                  type="text"
+                  value={addOnSearchQuery}
+                  onChange={(e) => setAddOnSearchQuery(e.target.value)}
+                  placeholder="Search add-on services..."
+                  className="w-full pl-9 pr-4 py-2 rounded-xl bg-[#0e1710] border border-[#606e60]/60 text-xs text-[#ebe5de] focus:outline-none focus:border-[#ad9e92]"
+                />
+              </div>
+            </div>
+
+            {/* Add-Ons Cards Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+              {addOns
+                .filter((addon) => {
+                  if (selectedAddOnCategoryFilter !== 'All' && (addon.category || 'General') !== selectedAddOnCategoryFilter) {
+                    return false;
+                  }
+                  if (addOnSearchQuery.trim()) {
+                    const q = addOnSearchQuery.toLowerCase();
+                    const matchName = addon.name.toLowerCase().includes(q);
+                    const matchDesc = addon.description.toLowerCase().includes(q);
+                    const matchCat = (addon.category || '').toLowerCase().includes(q);
+                    return matchName || matchDesc || matchCat;
+                  }
+                  return true;
+                })
+                .map((addon) => {
+                  const isActive = addon.isActive !== false;
+                  return (
+                    <div
+                      key={addon.id}
+                      className={`bg-[#0e1710] border rounded-2xl p-5 space-y-4 shadow-xl flex flex-col justify-between transition-all ${
+                        isActive
+                          ? 'border-[#606e60]/80'
+                          : 'border-amber-900/40 opacity-70 bg-[#0e1710]/60'
+                      }`}
+                    >
+                      <div className="space-y-3">
+                        {/* Header */}
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex items-center gap-2.5">
+                            <span className="text-2xl p-2 rounded-xl bg-[#132016] border border-[#606e60]/40 shadow-inner">
+                              {addon.icon || '✨'}
+                            </span>
+                            <div>
+                              <h3 className="font-bold text-base font-serif text-[#ebe5de] leading-snug">
+                                {addon.name}
+                              </h3>
+                              <span className="text-[10px] text-[#ad9e92] font-semibold bg-[#132016] px-2 py-0.5 rounded border border-[#606e60]/40">
+                                {addon.category || 'General'}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="text-right shrink-0">
+                            {addon.price > 0 ? (
+                              <div>
+                                <span className="font-bold text-amber-300 text-lg font-serif">
+                                  ₱{addon.price.toLocaleString()}
+                                </span>
+                                <span className="text-[10px] text-[#c3ccc0] block">{addon.unit}</span>
+                              </div>
+                            ) : (
+                              <span className="text-xs font-bold text-amber-300 bg-amber-950/80 px-2 py-1 rounded border border-amber-800/40 block">
+                                {addon.priceDisplay || 'Rate upon request'}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Description */}
+                        <p className="text-xs text-[#c3ccc0] leading-relaxed">
+                          {addon.description}
+                        </p>
+
+                        {addon.note && (
+                          <div className="p-2.5 rounded-xl bg-[#132016] border border-[#606e60]/40 text-[11px] text-amber-200/90 italic">
+                            * {addon.note}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Bottom Controls */}
+                      <div className="pt-3 border-t border-[#606e60]/40 flex items-center justify-between gap-2">
+                        {/* Toggle Active Switch */}
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => toggleAddOnActive(addon.id)}
+                            className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors cursor-pointer ${
+                              isActive ? 'bg-emerald-500' : 'bg-gray-700'
+                            }`}
+                            title={isActive ? 'Active (Click to Hide from Guests)' : 'Hidden (Click to Activate)'}
+                          >
+                            <span
+                              className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
+                                isActive ? 'translate-x-4' : 'translate-x-1'
+                              }`}
+                            />
+                          </button>
+                          <span className={`text-[11px] font-bold ${isActive ? 'text-emerald-400' : 'text-gray-400'}`}>
+                            {isActive ? 'Active' : 'Hidden'}
+                          </span>
+                        </div>
+
+                        {/* Edit & Delete Buttons */}
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => setEditingAddOn(addon)}
+                            className="px-3 py-1.5 rounded-xl bg-[#1c2a20] hover:bg-[#25362a] border border-[#606e60] text-[#ebe5de] font-bold text-xs flex items-center gap-1 cursor-pointer transition-colors"
+                          >
+                            <Edit className="w-3.5 h-3.5 text-[#ad9e92]" />
+                            <span>Edit</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (confirm(`Are you sure you want to delete add-on "${addon.name}"?`)) {
+                                deleteAddOn(addon.id);
+                              }
+                            }}
+                            className="p-1.5 rounded-xl bg-[#1c2a20] hover:bg-red-950 border border-[#606e60] text-red-400 hover:text-red-300 hover:border-red-600 transition-colors cursor-pointer"
+                            title="Delete Add-On"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
             </div>
           </div>
         )}
@@ -3757,18 +4002,9 @@ export const AdminDashboard: React.FC = () => {
                                 <button
                                   type="button"
                                   onClick={() => {
-                                    setDeleteConfirmModal({
-                                      isOpen: true,
-                                      title: 'Delete Staff / Agent Account',
-                                      message: `Are you sure you want to delete user account @${u.username} (${u.fullName})?`,
-                                      itemDetails: `Role: ${u.role} • Status: ${u.isActive ? 'Active' : 'Inactive'} • Permissions: ${Object.entries(u.permissions).filter(([, v]) => v).map(([k]) => k).length} Active Roles`,
-                                      warningText: 'This account will be permanently removed from staff access and database.',
-                                      confirmButtonText: 'Delete Account',
-                                      onConfirm: async () => {
-                                        await deleteAdminUser(u.id);
-                                        setDeleteConfirmModal(null);
-                                      },
-                                    });
+                                    if (confirm(`Are you sure you want to delete user account @${u.username}?`)) {
+                                      deleteAdminUser(u.id);
+                                    }
                                   }}
                                   className="p-1.5 rounded-lg bg-[#0e1710] border border-[#606e60] text-red-400 hover:text-red-300 hover:border-red-500 transition-colors"
                                   title="Delete User Account"
@@ -4989,6 +5225,310 @@ export const AdminDashboard: React.FC = () => {
           </div>
         )}
 
+        {/* MODAL: EDIT ADD-ON */}
+        {editingAddOn && (
+          <div className="fixed inset-0 z-50 bg-[#132016]/90 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto">
+            <div className="bg-[#132016] border border-[#606e60] rounded-3xl max-w-lg w-full my-8 p-6 sm:p-8 shadow-2xl text-[#ebe5de] relative space-y-6">
+              <div className="flex items-center justify-between border-b border-[#606e60]/60 pb-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-2xl">{editingAddOn.icon || '✨'}</span>
+                  <h3 className="text-xl font-bold font-serif text-[#ebe5de]">Edit Add-On: {editingAddOn.name}</h3>
+                </div>
+                <button onClick={() => setEditingAddOn(null)} className="text-[#c3ccc0] hover:text-[#ebe5de]">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="space-y-4 text-xs">
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="col-span-2">
+                    <label className="text-[#c3ccc0] block mb-1">Add-On Name *</label>
+                    <input
+                      type="text"
+                      value={editingAddOn.name}
+                      onChange={(e) => setEditingAddOn({ ...editingAddOn, name: e.target.value })}
+                      className="w-full px-3 py-2 rounded-xl bg-[#0e1710] border border-[#606e60]/60 text-[#ebe5de] focus:outline-none focus:border-[#ad9e92]"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[#c3ccc0] block mb-1">Icon Emoji</label>
+                    <input
+                      type="text"
+                      value={editingAddOn.icon || '✨'}
+                      onChange={(e) => setEditingAddOn({ ...editingAddOn, icon: e.target.value })}
+                      placeholder="e.g. 🍳, 🚐, 🌸"
+                      className="w-full px-3 py-2 rounded-xl bg-[#0e1710] border border-[#606e60]/60 text-[#ebe5de] text-center text-base focus:outline-none focus:border-[#ad9e92]"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[#c3ccc0] block mb-1">Category</label>
+                    <select
+                      value={editingAddOn.category || 'General'}
+                      onChange={(e) => setEditingAddOn({ ...editingAddOn, category: e.target.value as any })}
+                      className="w-full px-3 py-2 rounded-xl bg-[#0e1710] border border-[#606e60]/60 text-[#ebe5de] focus:outline-none focus:border-[#ad9e92]"
+                    >
+                      <option value="General">General</option>
+                      <option value="Dining">Dining</option>
+                      <option value="Activities">Activities</option>
+                      <option value="Transport">Transport</option>
+                      <option value="Wellness">Wellness</option>
+                      <option value="Equipment & Rentals">Equipment & Rentals</option>
+                      <option value="Events & Decor">Events & Decor</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-[#c3ccc0] block mb-1">Price Billing Unit</label>
+                    <select
+                      value={editingAddOn.unit || 'per stay'}
+                      onChange={(e) => setEditingAddOn({ ...editingAddOn, unit: e.target.value })}
+                      className="w-full px-3 py-2 rounded-xl bg-[#0e1710] border border-[#606e60]/60 text-[#ebe5de] focus:outline-none focus:border-[#ad9e92]"
+                    >
+                      <option value="per stay">per stay</option>
+                      <option value="per person">per person</option>
+                      <option value="per night">per night</option>
+                      <option value="per roundtrip">per roundtrip</option>
+                      <option value="per hour">per hour</option>
+                      <option value="upon request">upon request</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[#c3ccc0] block mb-1">Price (₱)</label>
+                    <input
+                      type="number"
+                      value={editingAddOn.price}
+                      onChange={(e) => setEditingAddOn({ ...editingAddOn, price: parseFloat(e.target.value) || 0 })}
+                      className="w-full px-3 py-2 rounded-xl bg-[#0e1710] border border-[#606e60]/60 text-[#ad9e92] font-bold focus:outline-none focus:border-[#ad9e92]"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[#c3ccc0] block mb-1">Display Text (if free/custom)</label>
+                    <input
+                      type="text"
+                      value={editingAddOn.priceDisplay || ''}
+                      onChange={(e) => setEditingAddOn({ ...editingAddOn, priceDisplay: e.target.value })}
+                      placeholder="e.g. Inquire on Arrival"
+                      className="w-full px-3 py-2 rounded-xl bg-[#0e1710] border border-[#606e60]/60 text-[#ebe5de] focus:outline-none focus:border-[#ad9e92]"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-[#c3ccc0] block mb-1">Description *</label>
+                  <textarea
+                    rows={3}
+                    value={editingAddOn.description}
+                    onChange={(e) => setEditingAddOn({ ...editingAddOn, description: e.target.value })}
+                    className="w-full px-3 py-2 rounded-xl bg-[#0e1710] border border-[#606e60]/60 text-[#ebe5de] focus:outline-none focus:border-[#ad9e92]"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[#c3ccc0] block mb-1">Special Note / Requirement (Optional)</label>
+                  <input
+                    type="text"
+                    value={editingAddOn.note || ''}
+                    onChange={(e) => setEditingAddOn({ ...editingAddOn, note: e.target.value })}
+                    placeholder="e.g. Must reserve at least 24 hours in advance"
+                    className="w-full px-3 py-2 rounded-xl bg-[#0e1710] border border-[#606e60]/60 text-[#ebe5de] focus:outline-none focus:border-[#ad9e92]"
+                  />
+                </div>
+
+                <div className="flex items-center gap-2 pt-2">
+                  <input
+                    type="checkbox"
+                    id="editAddOnActive"
+                    checked={editingAddOn.isActive !== false}
+                    onChange={(e) => setEditingAddOn({ ...editingAddOn, isActive: e.target.checked })}
+                    className="w-4 h-4 accent-emerald-500 rounded cursor-pointer"
+                  />
+                  <label htmlFor="editAddOnActive" className="text-xs font-bold text-[#ebe5de] cursor-pointer">
+                    Active & Available for Booking Selection
+                  </label>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-4 border-t border-[#606e60]/60">
+                <button
+                  type="button"
+                  onClick={() => setEditingAddOn(null)}
+                  className="px-4 py-2 rounded-xl bg-[#0e1710] border border-[#606e60] text-[#c3ccc0] text-xs font-bold"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveEditedAddOn}
+                  className="px-6 py-2 rounded-xl bg-[#ad9e92] hover:bg-[#c3ccc0] text-[#1c2a20] font-extrabold text-xs uppercase flex items-center gap-1.5 cursor-pointer shadow-lg transition-colors"
+                >
+                  <Save className="w-4 h-4" />
+                  <span>Update Add-On</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* MODAL: ADD NEW ADD-ON */}
+        {isAddingAddOn && (
+          <div className="fixed inset-0 z-50 bg-[#132016]/90 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto">
+            <div className="bg-[#132016] border border-[#606e60] rounded-3xl max-w-lg w-full my-8 p-6 sm:p-8 shadow-2xl text-[#ebe5de] relative space-y-6">
+              <div className="flex items-center justify-between border-b border-[#606e60]/60 pb-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-2xl">{newAddOnData.icon || '✨'}</span>
+                  <h3 className="text-xl font-bold font-serif text-[#ebe5de]">Add New Resort Add-On Experience</h3>
+                </div>
+                <button onClick={() => setIsAddingAddOn(false)} className="text-[#c3ccc0] hover:text-[#ebe5de]">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="space-y-4 text-xs">
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="col-span-2">
+                    <label className="text-[#c3ccc0] block mb-1">Add-On Name *</label>
+                    <input
+                      type="text"
+                      value={newAddOnData.name || ''}
+                      onChange={(e) => setNewAddOnData({ ...newAddOnData, name: e.target.value })}
+                      placeholder="e.g. Floating Breakfast Experience"
+                      className="w-full px-3 py-2 rounded-xl bg-[#0e1710] border border-[#606e60]/60 text-[#ebe5de] focus:outline-none focus:border-[#ad9e92]"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[#c3ccc0] block mb-1">Icon Emoji</label>
+                    <input
+                      type="text"
+                      value={newAddOnData.icon || '✨'}
+                      onChange={(e) => setNewAddOnData({ ...newAddOnData, icon: e.target.value })}
+                      placeholder="e.g. 🍳, 🚐, 🌸"
+                      className="w-full px-3 py-2 rounded-xl bg-[#0e1710] border border-[#606e60]/60 text-[#ebe5de] text-center text-base focus:outline-none focus:border-[#ad9e92]"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[#c3ccc0] block mb-1">Category</label>
+                    <select
+                      value={newAddOnData.category || 'General'}
+                      onChange={(e) => setNewAddOnData({ ...newAddOnData, category: e.target.value as any })}
+                      className="w-full px-3 py-2 rounded-xl bg-[#0e1710] border border-[#606e60]/60 text-[#ebe5de] focus:outline-none focus:border-[#ad9e92]"
+                    >
+                      <option value="General">General</option>
+                      <option value="Dining">Dining</option>
+                      <option value="Activities">Activities</option>
+                      <option value="Transport">Transport</option>
+                      <option value="Wellness">Wellness</option>
+                      <option value="Equipment & Rentals">Equipment & Rentals</option>
+                      <option value="Events & Decor">Events & Decor</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-[#c3ccc0] block mb-1">Price Billing Unit</label>
+                    <select
+                      value={newAddOnData.unit || 'per stay'}
+                      onChange={(e) => setNewAddOnData({ ...newAddOnData, unit: e.target.value })}
+                      className="w-full px-3 py-2 rounded-xl bg-[#0e1710] border border-[#606e60]/60 text-[#ebe5de] focus:outline-none focus:border-[#ad9e92]"
+                    >
+                      <option value="per stay">per stay</option>
+                      <option value="per person">per person</option>
+                      <option value="per night">per night</option>
+                      <option value="per roundtrip">per roundtrip</option>
+                      <option value="per hour">per hour</option>
+                      <option value="upon request">upon request</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[#c3ccc0] block mb-1">Price (₱) *</label>
+                    <input
+                      type="number"
+                      value={newAddOnData.price || 0}
+                      onChange={(e) => setNewAddOnData({ ...newAddOnData, price: parseFloat(e.target.value) || 0 })}
+                      className="w-full px-3 py-2 rounded-xl bg-[#0e1710] border border-[#606e60]/60 text-[#ad9e92] font-bold focus:outline-none focus:border-[#ad9e92]"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[#c3ccc0] block mb-1">Display Text (if custom)</label>
+                    <input
+                      type="text"
+                      value={newAddOnData.priceDisplay || ''}
+                      onChange={(e) => setNewAddOnData({ ...newAddOnData, priceDisplay: e.target.value })}
+                      placeholder="e.g. Inquire on Arrival"
+                      className="w-full px-3 py-2 rounded-xl bg-[#0e1710] border border-[#606e60]/60 text-[#ebe5de] focus:outline-none focus:border-[#ad9e92]"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-[#c3ccc0] block mb-1">Description *</label>
+                  <textarea
+                    rows={3}
+                    value={newAddOnData.description || ''}
+                    onChange={(e) => setNewAddOnData({ ...newAddOnData, description: e.target.value })}
+                    placeholder="Describe what is included in this add-on experience..."
+                    className="w-full px-3 py-2 rounded-xl bg-[#0e1710] border border-[#606e60]/60 text-[#ebe5de] focus:outline-none focus:border-[#ad9e92]"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[#c3ccc0] block mb-1">Special Note / Requirement (Optional)</label>
+                  <input
+                    type="text"
+                    value={newAddOnData.note || ''}
+                    onChange={(e) => setNewAddOnData({ ...newAddOnData, note: e.target.value })}
+                    placeholder="e.g. Advance reservation required at least 24h prior"
+                    className="w-full px-3 py-2 rounded-xl bg-[#0e1710] border border-[#606e60]/60 text-[#ebe5de] focus:outline-none focus:border-[#ad9e92]"
+                  />
+                </div>
+
+                <div className="flex items-center gap-2 pt-2">
+                  <input
+                    type="checkbox"
+                    id="newAddOnActive"
+                    checked={newAddOnData.isActive !== false}
+                    onChange={(e) => setNewAddOnData({ ...newAddOnData, isActive: e.target.checked })}
+                    className="w-4 h-4 accent-emerald-500 rounded cursor-pointer"
+                  />
+                  <label htmlFor="newAddOnActive" className="text-xs font-bold text-[#ebe5de] cursor-pointer">
+                    Active & Available for Booking Selection
+                  </label>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-4 border-t border-[#606e60]/60">
+                <button
+                  type="button"
+                  onClick={() => setIsAddingAddOn(false)}
+                  className="px-4 py-2 rounded-xl bg-[#0e1710] border border-[#606e60] text-[#c3ccc0] text-xs font-bold"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCreateAddOn}
+                  className="px-6 py-2 rounded-xl bg-[#ad9e92] hover:bg-[#c3ccc0] text-[#1c2a20] font-extrabold text-xs uppercase flex items-center gap-1.5 cursor-pointer shadow-lg transition-colors"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Create Add-On</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* MODAL: LIGHTBOX RECEIPT VIEW */}
         {viewingReceiptUrl && (
           <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-4">
@@ -5167,55 +5707,6 @@ export const AdminDashboard: React.FC = () => {
                   className="px-6 py-2 rounded-xl bg-[#ad9e92] text-[#1c2a20] font-bold text-xs uppercase"
                 >
                   Close Log
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* CUSTOM UNIVERSAL IN-APP CONFIRMATION MODAL (Reliable in Iframe and Standalone) */}
-        {deleteConfirmModal && deleteConfirmModal.isOpen && (
-          <div className="fixed inset-0 z-[9999] bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">
-            <div className="bg-[#132016] border border-red-500/50 rounded-3xl max-w-md w-full p-6 sm:p-7 shadow-2xl text-[#ebe5de] relative space-y-5">
-              <div className="flex items-start gap-4">
-                <div className="p-3 rounded-2xl bg-red-950/80 border border-red-800 text-red-400 shrink-0">
-                  <AlertTriangle className="w-6 h-6" />
-                </div>
-                <div className="space-y-1">
-                  <h3 className="text-lg font-bold font-serif text-[#ebe5de]">{deleteConfirmModal.title}</h3>
-                  <p className="text-xs text-[#c3ccc0] leading-relaxed">{deleteConfirmModal.message}</p>
-                </div>
-              </div>
-
-              {deleteConfirmModal.itemDetails && (
-                <div className="p-3 rounded-xl bg-[#0e1710] border border-[#606e60]/50 text-xs font-mono text-[#ad9e92] break-words">
-                  {deleteConfirmModal.itemDetails}
-                </div>
-              )}
-
-              {deleteConfirmModal.warningText && (
-                <p className="text-[11px] text-red-300/90 font-medium">
-                  ⚠️ {deleteConfirmModal.warningText}
-                </p>
-              )}
-
-              <div className="flex items-center justify-end gap-3 pt-3 border-t border-[#606e60]/40">
-                <button
-                  type="button"
-                  onClick={() => setDeleteConfirmModal(null)}
-                  className="px-4 py-2.5 rounded-xl bg-[#0e1710] hover:bg-[#1c2a20] border border-[#606e60] text-[#c3ccc0] hover:text-[#ebe5de] text-xs font-bold cursor-pointer transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={async () => {
-                    await deleteConfirmModal.onConfirm();
-                  }}
-                  className="px-5 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer shadow-lg shadow-red-950/50 transition-colors"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  <span>{deleteConfirmModal.confirmButtonText || 'Confirm Delete'}</span>
                 </button>
               </div>
             </div>
