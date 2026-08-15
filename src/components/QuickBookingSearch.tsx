@@ -414,7 +414,7 @@ export const QuickBookingSearch: React.FC = () => {
                 <option value="All">All Packages ({packages.length} Available)</option>
                 {packages.map((pkg) => (
                   <option key={pkg.id} value={pkg.id}>
-                    {pkg.name} • Rec. {pkg.recommendedGuests} (₱{pkg.price.toLocaleString()})
+                    {pkg.name} • {pkg.tagline || pkg.recommendedGuests} (₱{pkg.price.toLocaleString()})
                   </option>
                 ))}
               </select>
@@ -476,7 +476,7 @@ export const QuickBookingSearch: React.FC = () => {
                 <optgroup label="Experience Packages">
                   {packages.map((pkg) => (
                     <option key={pkg.id} value={pkg.id}>
-                      {pkg.name} (Rec. {pkg.recommendedGuests} - ₱{pkg.price.toLocaleString()})
+                      {pkg.name} ({pkg.tagline || pkg.recommendedGuests} - ₱{pkg.price.toLocaleString()})
                     </option>
                   ))}
                 </optgroup>

@@ -2039,8 +2039,8 @@ export const AdminDashboard: React.FC = () => {
 
                     <div>
                       <h3 className="font-bold text-lg font-serif text-[#ebe5de]">{pkg.name}</h3>
-                      <p className="text-xs text-[#ad9e92] italic">{pkg.tagline}</p>
-                      <p className="text-xs text-[#c3ccc0] mt-1">Duration: <strong className="text-[#ebe5de]">{pkg.duration}</strong> • Guests: {pkg.recommendedGuests}</p>
+                      <p className="text-xs text-[#ad9e92] font-medium">{pkg.tagline || pkg.recommendedGuests}</p>
+                      <p className="text-xs text-[#c3ccc0] mt-1">Duration: <strong className="text-[#ebe5de]">{pkg.duration}</strong></p>
                     </div>
 
                     <div className="space-y-1 text-xs text-[#c3ccc0] bg-[#0e1710] p-3 rounded-xl border border-[#606e60]/40">

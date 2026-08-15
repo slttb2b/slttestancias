@@ -131,7 +131,8 @@ export const BookingWizardModal: React.FC = () => {
   // Helper to extract base capacity of a package
   const getPackageBaseCapacity = (pkg: Package | null): number => {
     if (!pkg) return 0;
-    const numbers = pkg.recommendedGuests.match(/\d+/g);
+    const textToCheck = `${pkg.tagline || ''} ${pkg.recommendedGuests || ''}`;
+    const numbers = textToCheck.match(/\d+/g);
     if (numbers && numbers.length > 0) {
       return Math.max(...numbers.map(Number));
     }
@@ -951,7 +952,7 @@ export const BookingWizardModal: React.FC = () => {
                                   </span>
                                 )}
                               </h5>
-                              <span className="text-[11px] text-[#ad9e92] font-semibold">{pkg.duration} • Base Capacity: {pkg.recommendedGuests} (Max ~{pkgCapacity} guests)</span>
+                              <span className="text-[11px] text-[#ad9e92] font-semibold">{pkg.duration} • {pkg.tagline || `Base Capacity: ${pkg.recommendedGuests}`} (Max ~{pkgCapacity} guests)</span>
                             </div>
                             <div className="text-right shrink-0">
                               <span className="font-bold text-amber-300 text-xl font-serif">₱{pkg.price.toLocaleString()}</span>

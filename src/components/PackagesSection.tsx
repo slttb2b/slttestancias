@@ -24,6 +24,11 @@ export const PackagesSection: React.FC = () => {
     setPackages(updated);
   };
 
+  const handleUpdatePkgTagline = (pkgId: string, newTagline: string) => {
+    const updated = packages.map((p) => (p.id === pkgId ? { ...p, tagline: newTagline } : p));
+    setPackages(updated);
+  };
+
   const handleBookPackage = (pkg: Package) => {
     setSelectedPackageForBooking(pkg);
     setSelectedRoomForBooking(null);
@@ -136,8 +141,12 @@ export const PackagesSection: React.FC = () => {
                   <p className={`text-xs font-medium flex items-center gap-1.5 ${
                     isLight ? 'text-[#2d4536]' : 'text-[#c3ccc0]'
                   }`}>
-                    <Users className={`w-4 h-4 ${isLight ? 'text-[#2d4536]' : 'text-[#ad9e92]'}`} />
-                    Recommended for: {pkg.recommendedGuests}
+                    <Users className={`w-4 h-4 shrink-0 ${isLight ? 'text-[#2d4536]' : 'text-[#ad9e92]'}`} />
+                    <EditableText
+                      value={pkg.tagline || pkg.recommendedGuests}
+                      onChange={(val) => handleUpdatePkgTagline(pkg.id, val)}
+                      as="span"
+                    />
                   </p>
 
                   {/* Inclusions List */}
