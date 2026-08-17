@@ -102,16 +102,7 @@ export const seedFirestoreIfEmpty = async (
       }
     }
 
-    // 4. Seed Bookings
-    const bookingsSnap = await getDocs(collection(db, COLLECTIONS.BOOKINGS));
-    if (bookingsSnap.empty) {
-      console.log('Firestore: Seeding default bookings...');
-      for (const b of defaultBookings) {
-        await setDoc(doc(db, COLLECTIONS.BOOKINGS, b.id), cleanForFirestore(b));
-      }
-    }
-
-    // 5. Seed Settings (Resort Info & Payment Settings)
+    // 4. System Settings (Resort Info & Payment Settings)
     const resortInfoDoc = doc(db, COLLECTIONS.SETTINGS, 'resort_info');
     const paymentSettingsDoc = doc(db, COLLECTIONS.SETTINGS, 'payment_settings');
     
@@ -155,15 +146,7 @@ export const seedFirestoreIfEmpty = async (
       console.log('Firestore: payment_settings document already exists, preserving cloud content.');
     }
 
-    // 6. Seed Chat Threads
-    const chatSnap = await getDocs(collection(db, COLLECTIONS.CHAT_THREADS));
-    if (chatSnap.empty) {
-      for (const t of defaultChatThreads) {
-        await setDoc(doc(db, COLLECTIONS.CHAT_THREADS, t.id), cleanForFirestore(t));
-      }
-    }
-
-    // 7. Seed Add-On Services
+    // 5. Seed Add-On Services
     const addOnsSnap = await getDocs(collection(db, COLLECTIONS.ADD_ONS));
     if (addOnsSnap.empty && defaultAddOns && defaultAddOns.length > 0) {
       console.log('Firestore: Seeding default add-ons...');
@@ -448,6 +431,30 @@ export const deleteChatThreadFromFirestore = async (threadId: string) => {
     await deleteDoc(doc(db, COLLECTIONS.CHAT_THREADS, threadId));
   } catch (err) {
     console.error('Firestore deleteChatThread error:', err);
+    throw err;
+  }
+};
+
+export const clearAllBookingsFromFirestore = async () => {
+  try {
+    const snap = await getDocs(collection(db, COLLECTIONS.BOOKINGS));
+    const batchPromises = snap.docs.map((d) => deleteDoc(doc(db, COLLECTIONS.BOOKINGS, d.id)));
+    await Promise.all(batchPromises);
+    console.log(`Firestore: Cleared ${snap.docs.length} bookings.`);
+  } catch (err) {
+    console.error('Firestore clearAllBookings error:', err);
+    throw err;
+  }
+};
+
+export const clearAllChatThreadsFromFirestore = async () => {
+  try {
+    const snap = await getDocs(collection(db, COLLECTIONS.CHAT_THREADS));
+    const batchPromises = snap.docs.map((d) => deleteDoc(doc(db, COLLECTIONS.CHAT_THREADS, d.id)));
+    await Promise.all(batchPromises);
+    console.log(`Firestore: Cleared ${snap.docs.length} chat threads.`);
+  } catch (err) {
+    console.error('Firestore clearAllChatThreads error:', err);
     throw err;
   }
 };

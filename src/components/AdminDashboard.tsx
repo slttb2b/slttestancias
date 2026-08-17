@@ -76,6 +76,7 @@ export const AdminDashboard: React.FC = () => {
     bookings,
     updateBookingStatus,
     deleteBooking,
+    clearAllBookings,
     rooms,
     toggleRoomAvailability,
     updateRoomPrice,
@@ -105,6 +106,7 @@ export const AdminDashboard: React.FC = () => {
     sendChatMessage,
     markThreadReadByOwner,
     deleteChatThread,
+    clearAllChatThreads,
     unreadChatCountOwner,
     adminUsers,
     currentAdminUser,
@@ -1350,20 +1352,37 @@ export const AdminDashboard: React.FC = () => {
                 />
               </div>
 
-              <div className="flex items-center gap-2 w-full sm:w-auto">
-                <span className="text-xs text-[#c3ccc0]">Filter Status:</span>
-                <select
-                  value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value)}
-                  className="px-3 py-2 rounded-xl bg-[#0e1710] border border-[#606e60]/60 text-xs text-[#ebe5de] focus:outline-none focus:border-[#c3ccc0]"
-                >
-                  <option value="All">All Statuses</option>
-                  <option value="Pending">Pending</option>
-                  <option value="Confirmed">Confirmed</option>
-                  <option value="Checked In">Checked In</option>
-                  <option value="Checked Out">Checked Out</option>
-                  <option value="Cancelled">Cancelled</option>
-                </select>
+              <div className="flex items-center gap-3 w-full sm:w-auto">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-[#c3ccc0]">Filter Status:</span>
+                  <select
+                    value={statusFilter}
+                    onChange={(e) => setStatusFilter(e.target.value)}
+                    className="px-3 py-2 rounded-xl bg-[#0e1710] border border-[#606e60]/60 text-xs text-[#ebe5de] focus:outline-none focus:border-[#c3ccc0]"
+                  >
+                    <option value="All">All Statuses</option>
+                    <option value="Pending">Pending</option>
+                    <option value="Confirmed">Confirmed</option>
+                    <option value="Checked In">Checked In</option>
+                    <option value="Checked Out">Checked Out</option>
+                    <option value="Cancelled">Cancelled</option>
+                  </select>
+                </div>
+
+                {bookings.length > 0 && currentAdminUser?.permissions.canDeleteBookings !== false && (
+                  <button
+                    onClick={() => {
+                      if (confirm('Are you sure you want to delete ALL bookings? This will clear the entire bookings list permanently.')) {
+                        clearAllBookings();
+                      }
+                    }}
+                    className="px-3 py-2 rounded-xl bg-red-950/40 border border-red-800/60 text-red-300 hover:bg-red-900/60 hover:text-white transition-colors text-xs font-semibold flex items-center gap-1.5 cursor-pointer shrink-0"
+                    title="Delete all bookings permanently"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Clear All</span>
+                  </button>
+                )}
               </div>
             </div>
 
@@ -1559,11 +1578,27 @@ export const AdminDashboard: React.FC = () => {
               {/* Left Column: Chat Threads List */}
               <div className="lg:col-span-4 bg-[#0e1710] border border-[#606e60]/50 rounded-2xl p-3 flex flex-col space-y-2 max-h-[600px] overflow-y-auto">
                 <h3 className="text-xs font-extrabold uppercase tracking-wider text-[#ad9e92] px-2 py-1 flex items-center justify-between">
-                  <span>Conversations ({chatThreads.length})</span>
-                  {unreadChatCountOwner > 0 && (
-                    <span className="text-emerald-400 font-normal text-[10px]">
-                      {unreadChatCountOwner} unread
-                    </span>
+                  <div className="flex items-center gap-2">
+                    <span>Conversations ({chatThreads.length})</span>
+                    {unreadChatCountOwner > 0 && (
+                      <span className="text-emerald-400 font-normal text-[10px]">
+                        {unreadChatCountOwner} unread
+                      </span>
+                    )}
+                  </div>
+                  {chatThreads.length > 0 && (
+                    <button
+                      onClick={() => {
+                        if (confirm('Are you sure you want to delete ALL customer chat threads? This will clear the entire inbox permanently.')) {
+                          clearAllChatThreads();
+                        }
+                      }}
+                      className="text-[11px] text-red-400/80 hover:text-red-300 flex items-center gap-1 font-semibold cursor-pointer lowercase"
+                      title="Clear all chat conversations"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                      <span>clear all</span>
+                    </button>
                   )}
                 </h3>
 

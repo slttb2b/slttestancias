@@ -54,6 +54,8 @@ import {
   deleteAddOnFromFirestore,
   saveChatThreadToFirestore,
   deleteChatThreadFromFirestore,
+  clearAllBookingsFromFirestore,
+  clearAllChatThreadsFromFirestore,
   saveResortInfoToFirestore,
   savePaymentSettingsToFirestore,
   forceSyncAllToFirestore,
@@ -140,6 +142,7 @@ interface ResortContextType {
   addBooking: (booking: Booking) => void;
   updateBookingStatus: (id: string, status: BookingStatus, notes?: string, paymentStatus?: 'Unpaid' | 'Deposit Paid' | 'Fully Paid') => void;
   deleteBooking: (id: string) => void;
+  clearAllBookings: () => Promise<void>;
   attachBookingReceipt: (bookingId: string, receiptUrl: string, refCode?: string) => void;
   
   // Room actions
@@ -193,6 +196,7 @@ interface ResortContextType {
   markThreadReadByOwner: (threadId: string) => void;
   markThreadReadByCustomer: (threadId: string) => void;
   deleteChatThread: (threadId: string) => void;
+  clearAllChatThreads: () => Promise<void>;
   unreadChatCountOwner: number;
 
   // Super Admin & User Management
@@ -494,7 +498,7 @@ export const ResortProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     } catch (e) {
       console.error('Error loading bookings:', e);
     }
-    return INITIAL_BOOKINGS;
+    return [];
   });
 
   const [searchFilters, setSearchFilters] = useState<QuickSearchFilters>({
@@ -619,12 +623,12 @@ export const ResortProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       const saved = localStorage.getItem('sltt_chat_threads');
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed)) return parsed;
       }
     } catch (e) {
       console.error('Error loading chat threads:', e);
     }
-    return INITIAL_CHAT_THREADS;
+    return [];
   });
 
   useEffect(() => {
@@ -641,6 +645,42 @@ export const ResortProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   }, [currentCustomerThreadId]);
 
+  // Active purge: remove all sample/demo bookings and sample chat threads
+  useEffect(() => {
+    try {
+      const demoPurged = localStorage.getItem('sltt_demo_purge_complete_v3');
+      if (!demoPurged) {
+        localStorage.setItem('sltt_demo_purge_complete_v3', 'true');
+        
+        // Remove known demo IDs from Firestore
+        const demoBookingIds = [
+          'bkg-1', 'bkg-2', 'bkg-3', 'bkg-4', 'bkg-5',
+          'BK-88219', 'BK-90412', 'BK-95882', 'BK-99310',
+          'SLTT-2026-88219', 'SLTT-2026-90412', 'SLTT-2026-95882', 'SLTT-2026-99310'
+        ];
+        const demoChatIds = ['CHAT-1001', 'CHAT-1002', 'chat-1', 'chat-2'];
+
+        demoBookingIds.forEach((id) => deleteBookingFromFirestore(id).catch(() => {}));
+        demoChatIds.forEach((id) => deleteChatThreadFromFirestore(id).catch(() => {}));
+
+        // Also query and clear any bookings in Firestore if they are demo entries
+        clearAllBookingsFromFirestore().catch((e) => console.warn('Purge bookings error:', e));
+        clearAllChatThreadsFromFirestore().catch((e) => console.warn('Purge chat error:', e));
+
+        setBookings([]);
+        safeSave('sltt_bookings', []);
+
+        setChatThreads([]);
+        safeSave('sltt_chat_threads', []);
+
+        setCurrentCustomerThreadId(null);
+        localStorage.removeItem('sltt_current_chat_thread_id');
+      }
+    } catch (err) {
+      console.warn('Demo purge error:', err);
+    }
+  }, []);
+
   const isSavingResortInfoRef = useRef(false);
   const isSavingPaymentSettingsRef = useRef(false);
 
@@ -650,10 +690,10 @@ export const ResortProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       DEFAULT_ADMIN_USERS,
       INITIAL_ROOMS,
       INITIAL_PACKAGES,
-      INITIAL_BOOKINGS,
+      [],
       INITIAL_RESORT_INFO,
       INITIAL_PAYMENT_SETTINGS,
-      INITIAL_CHAT_THREADS,
+      [],
       ADD_ON_SERVICES
     );
 
@@ -852,10 +892,30 @@ export const ResortProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const deleteChatThread = (threadId: string) => {
-    deleteChatThreadFromFirestore(threadId);
-    setChatThreads((prev) => prev.filter((t) => t.id !== threadId));
+    deleteChatThreadFromFirestore(threadId).catch((err) => console.error('Firestore deleteChatThread err:', err));
+    setChatThreads((prev) => {
+      const updated = prev.filter((t) => t.id !== threadId);
+      safeSave('sltt_chat_threads', updated);
+      return updated;
+    });
     if (currentCustomerThreadId === threadId) {
       setCurrentCustomerThreadId(null);
+      localStorage.removeItem('sltt_current_chat_thread_id');
+    }
+    showToast('Chat thread deleted.', 'info');
+  };
+
+  const clearAllChatThreads = async () => {
+    try {
+      await clearAllChatThreadsFromFirestore();
+      setChatThreads([]);
+      setCurrentCustomerThreadId(null);
+      safeSave('sltt_chat_threads', []);
+      localStorage.removeItem('sltt_current_chat_thread_id');
+      showToast('All chat conversations cleared.', 'info');
+    } catch (err) {
+      console.error('Error clearing chat threads:', err);
+      showToast('Failed to clear all chat conversations.', 'error');
     }
   };
 
@@ -1140,9 +1200,25 @@ export const ResortProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const deleteBooking = (id: string) => {
-    deleteBookingFromFirestore(id);
-    setBookings((prev) => prev.filter((b) => b.id !== id));
+    deleteBookingFromFirestore(id).catch((err) => console.error('Firestore deleteBooking err:', err));
+    setBookings((prev) => {
+      const updated = prev.filter((b) => b.id !== id);
+      safeSave('sltt_bookings', updated);
+      return updated;
+    });
     showToast('Booking deleted.', 'info');
+  };
+
+  const clearAllBookings = async () => {
+    try {
+      await clearAllBookingsFromFirestore();
+      setBookings([]);
+      safeSave('sltt_bookings', []);
+      showToast('All bookings have been cleared.', 'info');
+    } catch (err) {
+      console.error('Error clearing bookings:', err);
+      showToast('Failed to clear all bookings.', 'error');
+    }
   };
 
   const attachBookingReceipt = (bookingId: string, receiptUrl: string, refCode?: string) => {
@@ -1352,6 +1428,7 @@ export const ResortProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         addBooking,
         updateBookingStatus,
         deleteBooking,
+        clearAllBookings,
         attachBookingReceipt,
         toggleRoomAvailability,
         updateRoomPrice,
@@ -1386,6 +1463,7 @@ export const ResortProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         markThreadReadByOwner,
         markThreadReadByCustomer,
         deleteChatThread,
+        clearAllChatThreads,
         unreadChatCountOwner,
         adminUsers,
         currentAdminUser,
