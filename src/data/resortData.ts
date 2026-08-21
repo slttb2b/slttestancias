@@ -10,7 +10,7 @@ export const INITIAL_RESORT_INFO: ResortInfo = {
   tagline: 'Your Perfect Tropical Sanctuary in Lugait',
   location: 'Tigbao, Mauswagon Lugait',
   address: 'Tigbao, Mauswagon Lugait, Misamis Oriental / Lanao del Norte Border, Philippines',
-  contactNumber: '09054965912',
+  contactNumber: 'Globe: 09455768405 | Smart: 09296690344',
   email: 'reservations@slttestanciasresort.com',
   facebookPage: 'SLTT ESTANCIAS',
   googleMapsUrl: 'https://maps.app.goo.gl/HQjHywiXkYad41So8',

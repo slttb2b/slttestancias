@@ -165,12 +165,17 @@ export const Footer: React.FC<FooterProps> = ({
                 <MapPin className="w-4 h-4 text-[#c3ccc0] shrink-0 mt-0.5" />
                 <span>{resortInfo.address}</span>
               </p>
-              <p className="flex items-center gap-2">
-                <PhoneCall className="w-4 h-4 text-[#ad9e92] shrink-0" />
-                <a href={`tel:${resortInfo.contactNumber}`} className="text-[#ebe5de] hover:underline">
-                  {resortInfo.contactNumber}
-                </a>
-              </p>
+              <div className="flex items-start gap-2">
+                <PhoneCall className="w-4 h-4 text-[#ad9e92] shrink-0 mt-0.5" />
+                <div className="flex flex-col space-y-0.5">
+                  <a href="tel:09455768405" className="text-[#ebe5de] hover:underline">
+                    Globe: 0945 576 8405
+                  </a>
+                  <a href="tel:09296690344" className="text-[#ebe5de] hover:underline">
+                    Smart: 0929 669 0344
+                  </a>
+                </div>
+              </div>
               <p className="flex items-center gap-2">
                 <Mail className="w-4 h-4 text-[#ad9e92] shrink-0" />
                 <a href={`mailto:${resortInfo.email}`} className="text-[#ad9e92] hover:underline truncate">

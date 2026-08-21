@@ -6,7 +6,8 @@ import { Room, Booking } from '../types';
  * 1. Room is marked isAvailable === false (blocked by admin)
  * 2. Room is marked isComingSoon === true
  * 3. Room has blockedDates matching the range
- * 4. There is an active non-cancelled booking ('Confirmed', 'Checked In', or 'Pending') overlapping the dates.
+ * 4. There is an active confirmed booking ('Confirmed' or 'Checked In') overlapping the dates.
+ * Note: 'Pending' bookings remain open and bookable for other guests until confirmed by management.
  */
 export const checkRoomOccupied = (
   roomId: string,
@@ -52,10 +53,13 @@ export const checkRoomOccupied = (
     }
   }
 
-  // 4. Check existing active bookings
+  // 4. Check existing active bookings:
+  // Only 'Confirmed' and 'Checked In' bookings mark the accommodation as occupied.
+  // 'Pending', 'Cancelled', and 'Checked Out' bookings do NOT block the unit, allowing other guests to book it.
   const activeBooking = bookings.find((b) => {
-    if (b.roomId !== roomId) return false;
-    if (b.status === 'Cancelled' || b.status === 'Checked Out') return false;
+    const isThisRoomBooked = b.roomId === roomId || b.allocatedRooms?.some((ar) => ar.id === roomId);
+    if (!isThisRoomBooked) return false;
+    if (b.status !== 'Confirmed' && b.status !== 'Checked In') return false;
     return isOverlap(checkInDate, checkOutDate, b.checkInDate, b.checkOutDate);
   });
 

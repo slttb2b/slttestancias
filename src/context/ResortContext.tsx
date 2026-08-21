@@ -249,7 +249,7 @@ const DEFAULT_ADMIN_USERS: AdminUser[] = [
     password: 'Slttestancias123@',
     fullName: 'Master Resort Administrator',
     email: 'reservations@slttestanciasresort.com',
-    phone: '09054965912',
+    phone: 'Globe: 09455768405 / Smart: 09296690344',
     role: 'super_admin',
     permissions: {
       manageBookings: true,
@@ -562,8 +562,21 @@ export const ResortProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const unsubSettings = subscribeSettings(
       (info) => {
         if (!isSavingResortInfoRef.current && info) {
-          setResortInfo((prev) => ({ ...INITIAL_RESORT_INFO, ...prev, ...info }));
-          safeSave('sltt_resort_info', { ...INITIAL_RESORT_INFO, ...info });
+          // If remote doc still holds legacy single phone number, migrate to official Globe & Smart contact line
+          const contactNum = (info.contactNumber === '09054965912' || !info.contactNumber)
+            ? 'Globe: 09455768405 | Smart: 09296690344'
+            : info.contactNumber;
+
+          const mergedInfo = { ...INITIAL_RESORT_INFO, ...info, contactNumber: contactNum };
+          setResortInfo((prev) => ({ ...prev, ...mergedInfo }));
+          safeSave('sltt_resort_info', mergedInfo);
+
+          // If it had the old contact number in Firestore, update Firestore doc transparently
+          if (info.contactNumber === '09054965912') {
+            saveResortInfoToFirestore(mergedInfo).catch((err) =>
+              console.warn('[Firestore] Auto-migrating contact number notice:', err)
+            );
+          }
         }
       },
       (payment) => {

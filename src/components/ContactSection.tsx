@@ -84,15 +84,31 @@ export const ContactSection: React.FC = () => {
               </div>
               <div>
                 <h4 className={`font-bold text-xs uppercase tracking-wider ${isLight ? 'text-[#2d4536]' : 'text-[#c3ccc0]'}`}>Mobile & Hotline</h4>
-                <a
-                  href={`tel:${resortInfo.contactNumber}`}
-                  className={`text-lg font-bold font-serif block mt-0.5 transition-colors ${
-                    isLight ? 'text-[#1c2a20] hover:text-[#2d4536]' : 'text-[#ebe5de] hover:text-[#c3ccc0]'
-                  }`}
-                >
-                  {resortInfo.contactNumber}
-                </a>
-                <p className={`text-xs mt-1 ${isLight ? 'text-[#3c5241]' : 'text-[#c3ccc0]/80'}`}>Direct call or SMS assistance</p>
+                <div className="space-y-1 mt-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-semibold px-2 py-0.5 rounded bg-emerald-700/20 text-emerald-600 dark:text-emerald-300 font-mono">Globe</span>
+                    <a
+                      href="tel:09455768405"
+                      className={`text-base font-bold font-serif transition-colors ${
+                        isLight ? 'text-[#1c2a20] hover:text-[#2d4536]' : 'text-[#ebe5de] hover:text-[#c3ccc0]'
+                      }`}
+                    >
+                      0945 576 8405
+                    </a>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-semibold px-2 py-0.5 rounded bg-blue-700/20 text-blue-600 dark:text-blue-300 font-mono">Smart</span>
+                    <a
+                      href="tel:09296690344"
+                      className={`text-base font-bold font-serif transition-colors ${
+                        isLight ? 'text-[#1c2a20] hover:text-[#2d4536]' : 'text-[#ebe5de] hover:text-[#c3ccc0]'
+                      }`}
+                    >
+                      0929 669 0344
+                    </a>
+                  </div>
+                </div>
+                <p className={`text-xs mt-1.5 ${isLight ? 'text-[#3c5241]' : 'text-[#c3ccc0]/80'}`}>Direct call or SMS assistance</p>
               </div>
             </div>
 

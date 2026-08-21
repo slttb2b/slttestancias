@@ -83,10 +83,30 @@ export const Header: React.FC<HeaderProps> = ({ onOpenDocs, onOpenMyBookings }) 
               <MapPin className={`w-3.5 h-3.5 ${isLight ? 'text-[#2d4536]' : 'text-[#ad9e92]'}`} />
               {resortInfo.location}
             </span>
-            <span className="flex items-center gap-1.5 font-medium">
+            <div className="flex items-center gap-2 font-medium">
               <PhoneCall className={`w-3.5 h-3.5 ${isLight ? 'text-[#2d4536]' : 'text-[#ad9e92]'}`} />
-              {resortInfo.contactNumber}
-            </span>
+              <div className="flex items-center gap-2">
+                <a
+                  href="tel:09455768405"
+                  className={`hover:underline transition-colors ${
+                    isLight ? 'hover:text-[#1c2a20]' : 'hover:text-[#ebe5de]'
+                  }`}
+                  title="Call Globe"
+                >
+                  <span className="opacity-75 font-normal mr-0.5">Globe:</span> 0945 576 8405
+                </a>
+                <span className="opacity-40">|</span>
+                <a
+                  href="tel:09296690344"
+                  className={`hover:underline transition-colors ${
+                    isLight ? 'hover:text-[#1c2a20]' : 'hover:text-[#ebe5de]'
+                  }`}
+                  title="Call Smart"
+                >
+                  <span className="opacity-75 font-normal mr-0.5">Smart:</span> 0929 669 0344
+                </a>
+              </div>
+            </div>
             <span className="flex items-center gap-1.5">
               <Clock className={`w-3.5 h-3.5 ${isLight ? 'text-[#2d4536]' : 'text-[#ad9e92]'}`} />
               {resortInfo.businessHours}
