@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { useResort, ActiveTab } from '../context/ResortContext';
 import {
-  Palmtree,
   CalendarCheck,
   ShieldCheck,
   BookOpen,
@@ -152,10 +151,19 @@ export const Header: React.FC<HeaderProps> = ({ onOpenDocs, onOpenMyBookings }) 
           onClick={() => handleNavClick('home')}
           className="flex items-center gap-3 text-left group cursor-pointer"
         >
-          <div className={`w-10 h-10 rounded-xl flex items-center justify-center shadow-md group-hover:scale-105 transition-transform ${
-            isLight ? 'bg-[#2d4536] text-white border border-[#2d4536]' : 'bg-[#1c2a20] border border-[#606e60] text-[#c3ccc0]'
+          <div className={`w-11 h-11 rounded-xl overflow-hidden flex items-center justify-center shadow-md group-hover:scale-105 transition-transform bg-[#26442e] border ${
+            isLight ? 'border-[#2d4536]/30 shadow-emerald-950/10' : 'border-[#606e60]/60 shadow-black/40'
           }`}>
-            <Palmtree className="w-6 h-6" />
+            <img
+              src="/sltt-logo.jpg"
+              alt="SLTT ESTANCIAS"
+              className="w-full h-full object-cover"
+              referrerPolicy="no-referrer"
+              onError={(e) => {
+                // Fallback to SVG if needed
+                (e.target as HTMLImageElement).src = '/favicon.svg';
+              }}
+            />
           </div>
           <div>
             <span className={`text-xl font-bold tracking-wider font-serif transition-colors block leading-tight ${

@@ -1,0 +1,99 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#2d5238" />
+      <stop offset="100%" stop-color="#213d29" />
+    </linearGradient>
+    <linearGradient id="silverTrim" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#e5e7eb" />
+      <stop offset="50%" stop-color="#cbd5e1" />
+      <stop offset="100%" stop-color="#94a3b8" />
+    </linearGradient>
+    <filter id="subtleGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#000000" flood-opacity="0.25" />
+    </filter>
+  </defs>
+
+  <!-- Forest Green Rounded Canvas -->
+  <rect width="512" height="512" rx="96" fill="url(#bgGrad)" />
+
+  <!-- SLTT Estancias Emblem -->
+  <g filter="url(#subtleGlow)" transform="translate(0, 0)">
+    <!-- Central Silver Dynamic Ribbon Contour -->
+    <path 
+      d="M 256 65 
+         C 285 130 300 190 280 250 
+         C 260 310 230 350 256 447 
+         C 225 385 210 325 232 262 
+         C 252 202 280 162 256 65 Z" 
+      fill="#213d29" 
+      stroke="url(#silverTrim)" 
+      stroke-width="14" 
+      stroke-linejoin="round"
+    />
+
+    <!-- Top-Right Upper Leaf Petal -->
+    <path 
+      d="M 256 65 
+         C 300 100 320 165 280 230 
+         C 235 220 220 150 256 65 Z" 
+      fill="#ffffff" 
+      stroke="url(#silverTrim)" 
+      stroke-width="12" 
+      stroke-linejoin="round"
+    />
+
+    <!-- Right Horizontal Leaf Petal -->
+    <path 
+      d="M 447 256 
+         C 382 300 317 320 252 280 
+         C 262 235 332 220 447 256 Z" 
+      fill="#ffffff" 
+      stroke="url(#silverTrim)" 
+      stroke-width="12" 
+      stroke-linejoin="round"
+    />
+
+    <!-- Bottom-Left Lower Leaf Petal -->
+    <path 
+      d="M 256 447 
+         C 212 412 192 347 232 282 
+         C 277 292 292 362 256 447 Z" 
+      fill="#ffffff" 
+      stroke="url(#silverTrim)" 
+      stroke-width="12" 
+      stroke-linejoin="round"
+    />
+
+    <!-- Left Horizontal Leaf Petal -->
+    <path 
+      d="M 65 256 
+         C 130 212 195 192 260 232 
+         C 250 277 180 292 65 256 Z" 
+      fill="#ffffff" 
+      stroke="url(#silverTrim)" 
+      stroke-width="12" 
+      stroke-linejoin="round"
+    />
+
+    <!-- Intersecting Flowing Silver Spine (S-Curve) -->
+    <path 
+      d="M 256 65 
+         C 200 135 140 220 200 300 
+         C 240 355 260 395 256 447" 
+      fill="none" 
+      stroke="url(#silverTrim)" 
+      stroke-width="14" 
+      stroke-linecap="round"
+    />
+    <path 
+      d="M 256 65 
+         C 312 117 372 202 312 282 
+         C 272 337 252 377 256 447" 
+      fill="none" 
+      stroke="url(#silverTrim)" 
+      stroke-width="14" 
+      stroke-linecap="round"
+    />
+  </g>
+</svg>

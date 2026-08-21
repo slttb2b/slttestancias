@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useResort } from '../context/ResortContext';
-import { Palmtree, MapPin, PhoneCall, Mail, Facebook, Shield, FileText, Heart } from 'lucide-react';
+import { MapPin, PhoneCall, Mail, Facebook, Shield, FileText, Heart } from 'lucide-react';
 import { EditableText } from './common/EditableText';
 
 interface FooterProps {
@@ -39,8 +39,16 @@ export const Footer: React.FC<FooterProps> = ({
           {/* Brand Col */}
           <div className="lg:col-span-2 space-y-4">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-[#132016] flex items-center justify-center text-[#ad9e92] border border-[#606e60]/60 shadow-md">
-                <Palmtree className="w-6 h-6" />
+              <div className="w-11 h-11 rounded-xl overflow-hidden bg-[#26442e] border border-[#606e60]/60 shadow-md shrink-0 flex items-center justify-center">
+                <img
+                  src="/sltt-logo.jpg"
+                  alt="SLTT ESTANCIAS"
+                  className="w-full h-full object-cover"
+                  referrerPolicy="no-referrer"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).src = '/favicon.svg';
+                  }}
+                />
               </div>
               <div>
                 <span className="text-xl font-bold tracking-wider font-serif text-[#ebe5de] block">
