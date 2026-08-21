@@ -4,9 +4,9 @@ import {
   getDoc,
   getDocs,
   setDoc,
-  updateDoc,
   deleteDoc,
   onSnapshot,
+  writeBatch,
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import {
@@ -15,218 +15,209 @@ import {
   Room,
   Package,
   AddOnService,
-  ChatThread,
-  PaymentSettings,
   ResortInfo,
+  PaymentSettings,
+  ChatThread,
+  Amenity,
+  GalleryItem,
+  Testimonial,
+  NotificationTemplates,
 } from '../types';
 
-// Collection Names
 export const COLLECTIONS = {
   ADMIN_USERS: 'admin_users',
   BOOKINGS: 'bookings',
   ROOMS: 'rooms',
   PACKAGES: 'packages',
   ADD_ONS: 'add_ons',
+  AMENITIES: 'amenities',
+  GALLERY: 'gallery',
+  REVIEWS: 'reviews',
   CHAT_THREADS: 'chat_threads',
   SETTINGS: 'settings',
 };
 
-// Helper to sanitize objects and strip undefined values before writing to Firestore
-function cleanForFirestore<T>(obj: T): T {
-  if (obj === null || obj === undefined) return null as any;
-  if (typeof obj !== 'object') return obj;
-  if (Array.isArray(obj)) return obj.map((item) => cleanForFirestore(item)) as any;
+export const SETTINGS_DOCS = {
+  APP_INITIALIZED: 'app_initialized',
+  RESORT_INFO: 'resort_info',
+  PAYMENT_SETTINGS: 'payment_settings',
+  NOTIFICATION_TEMPLATES: 'notification_templates',
+  CUSTOMIZATION: 'customization',
+};
 
-  const cleaned: Record<string, any> = {};
-  for (const key of Object.keys(obj as object)) {
-    const val = (obj as Record<string, any>)[key];
-    if (val !== undefined) {
-      cleaned[key] = cleanForFirestore(val);
-    }
+/**
+ * Sanitizes an object before writing to Firestore by removing undefined values recursively.
+ */
+export function cleanForFirestore<T>(obj: T): T {
+  if (obj === null || obj === undefined) {
+    return null as unknown as T;
   }
-  return cleaned as T;
+  if (Array.isArray(obj)) {
+    return obj.map((item) => cleanForFirestore(item)) as unknown as T;
+  }
+  if (typeof obj === 'object') {
+    const cleaned: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(obj as Record<string, unknown>)) {
+      if (value !== undefined) {
+        cleaned[key] = cleanForFirestore(value);
+      }
+    }
+    return cleaned as T;
+  }
+  return obj;
 }
 
-// --- INITIAL DATA SEEDING IF EMPTY ---
+/**
+ * Common handler for Firestore subscription errors.
+ */
+function handleFirestoreError(collectionName: string, error: unknown) {
+  console.warn(
+    `[Firestore] Firestore read/subscription warning for "${collectionName}" - defaults will NOT overwrite existing cloud data:`,
+    error
+  );
+}
+
+// Singleton promise lock to prevent concurrent initialization runs in React StrictMode
+let initializationPromise: Promise<void> | null = null;
+
+/**
+ * Permanent Initialization Guard
+ *
+ * Checks settings/app_initialized.
+ * If true: preserves all existing cloud data without seeding.
+ * If false: checks if production data already exists. If yes, marks initialized without overwriting.
+ * Only if database is truly brand new and empty: seeds initial defaults and writes app_initialized = true.
+ */
 export const seedFirestoreIfEmpty = async (
   defaultAdminUsers: AdminUser[],
   defaultRooms: Room[],
   defaultPackages: Package[],
-  defaultBookings: Booking[],
   defaultResortInfo: ResortInfo,
   defaultPaymentSettings: PaymentSettings,
-  defaultChatThreads: ChatThread[],
-  defaultAddOns?: AddOnService[]
-) => {
-  try {
-    // 1. Seed Admin Users
-    const usersSnap = await getDocs(collection(db, COLLECTIONS.ADMIN_USERS));
-    if (usersSnap.empty) {
-      console.log('Firestore: Seeding default admin users...');
+  defaultAddOns: AddOnService[],
+  defaultAmenities: Amenity[],
+  defaultGallery: GalleryItem[],
+  defaultReviews: Testimonial[],
+  defaultNotificationTemplates: NotificationTemplates
+): Promise<void> => {
+  if (initializationPromise) {
+    return initializationPromise;
+  }
+
+  initializationPromise = (async () => {
+    try {
+      console.log('[Firestore] Checking initialization status...');
+      const initDocRef = doc(db, COLLECTIONS.SETTINGS, SETTINGS_DOCS.APP_INITIALIZED);
+      const initDocSnap = await getDoc(initDocRef);
+
+      if (initDocSnap.exists() && initDocSnap.data()?.initialized === true) {
+        console.log('[Firestore] App already initialized. Preserving all cloud data.');
+        return;
+      }
+
+      // Check if existing production data is already present in Firestore
+      console.log('[Firestore] Initialization flag not found. Inspecting Firestore collections for existing data...');
+      const [resortInfoSnap, roomsSnap, usersSnap, packagesSnap, bookingsSnap] = await Promise.all([
+        getDoc(doc(db, COLLECTIONS.SETTINGS, SETTINGS_DOCS.RESORT_INFO)),
+        getDocs(collection(db, COLLECTIONS.ROOMS)),
+        getDocs(collection(db, COLLECTIONS.ADMIN_USERS)),
+        getDocs(collection(db, COLLECTIONS.PACKAGES)),
+        getDocs(collection(db, COLLECTIONS.BOOKINGS)),
+      ]);
+
+      const hasExistingData =
+        resortInfoSnap.exists() ||
+        !roomsSnap.empty ||
+        !usersSnap.empty ||
+        !packagesSnap.empty ||
+        !bookingsSnap.empty;
+
+      if (hasExistingData) {
+        console.log('[Firestore] Existing production data detected - marked as initialized without overwriting.');
+        await setDoc(initDocRef, {
+          initialized: true,
+          initializedAt: new Date().toISOString(),
+          schemaVersion: 1,
+        });
+        return;
+      }
+
+      // Only executed on a 100% brand-new, clean database
+      console.log('[Firestore] Truly empty database detected. First-time initialization started...');
+
+      // 1. Seed Admin Users
       for (const u of defaultAdminUsers) {
         await setDoc(doc(db, COLLECTIONS.ADMIN_USERS, u.id), cleanForFirestore(u));
       }
-    } else {
-      // Ensure master admin exists with correct credentials
-      const masterDoc = usersSnap.docs.find((d) => d.data().username === 'SLTTESTANCIA_ADMIN');
-      if (!masterDoc) {
-        const masterUser = defaultAdminUsers[0];
-        await setDoc(doc(db, COLLECTIONS.ADMIN_USERS, masterUser.id), cleanForFirestore(masterUser));
-      } else {
-        // Update password if outdated
-        if (masterDoc.data().password !== 'Slttestancias123@') {
-          await updateDoc(doc(db, COLLECTIONS.ADMIN_USERS, masterDoc.id), {
-            password: 'Slttestancias123@',
-            role: 'super_admin',
-            isActive: true,
-          });
-        }
-      }
-    }
 
-    // 2. Seed Rooms
-    const roomsSnap = await getDocs(collection(db, COLLECTIONS.ROOMS));
-    if (roomsSnap.empty) {
-      console.log('Firestore: Seeding default rooms...');
+      // 2. Seed Rooms
       for (const r of defaultRooms) {
         await setDoc(doc(db, COLLECTIONS.ROOMS, r.id), cleanForFirestore(r));
       }
-    }
 
-    // 3. Seed Packages
-    const packagesSnap = await getDocs(collection(db, COLLECTIONS.PACKAGES));
-    if (packagesSnap.empty) {
-      console.log('Firestore: Seeding default packages...');
+      // 3. Seed Packages
       for (const p of defaultPackages) {
         await setDoc(doc(db, COLLECTIONS.PACKAGES, p.id), cleanForFirestore(p));
       }
-    }
 
-    // 4. System Settings (Resort Info & Payment Settings)
-    const resortInfoDoc = doc(db, COLLECTIONS.SETTINGS, 'resort_info');
-    const paymentSettingsDoc = doc(db, COLLECTIONS.SETTINGS, 'payment_settings');
-    
-    const resortInfoSnap = await getDoc(resortInfoDoc);
-    if (!resortInfoSnap.exists()) {
-      let infoToSeed = defaultResortInfo;
-      try {
-        const localSaved = localStorage.getItem('sltt_resort_info');
-        if (localSaved) {
-          const parsed = JSON.parse(localSaved);
-          if (parsed && typeof parsed === 'object') {
-            infoToSeed = { ...defaultResortInfo, ...parsed };
-          }
-        }
-      } catch (e) {
-        console.warn('Error reading local sltt_resort_info migration fallback:', e);
-      }
-      console.log('Firestore: Seeding resort_info doc...');
-      await setDoc(resortInfoDoc, cleanForFirestore(infoToSeed));
-    } else {
-      console.log('Firestore: resort_info document already exists, preserving cloud content.');
-    }
-
-    const paymentSettingsSnap = await getDoc(paymentSettingsDoc);
-    if (!paymentSettingsSnap.exists()) {
-      let paymentToSeed = defaultPaymentSettings;
-      try {
-        const localSaved = localStorage.getItem('sltt_payment_settings');
-        if (localSaved) {
-          const parsed = JSON.parse(localSaved);
-          if (parsed && typeof parsed === 'object') {
-            paymentToSeed = { ...defaultPaymentSettings, ...parsed };
-          }
-        }
-      } catch (e) {
-        console.warn('Error reading local sltt_payment_settings migration fallback:', e);
-      }
-      console.log('Firestore: Seeding payment_settings doc...');
-      await setDoc(paymentSettingsDoc, cleanForFirestore(paymentToSeed));
-    } else {
-      console.log('Firestore: payment_settings document already exists, preserving cloud content.');
-    }
-
-    // 5. Seed Add-On Services
-    const addOnsSnap = await getDocs(collection(db, COLLECTIONS.ADD_ONS));
-    if (addOnsSnap.empty && defaultAddOns && defaultAddOns.length > 0) {
-      console.log('Firestore: Seeding default add-ons...');
+      // 4. Seed Add-ons
       for (const addon of defaultAddOns) {
         await setDoc(doc(db, COLLECTIONS.ADD_ONS, addon.id), cleanForFirestore(addon));
       }
-    }
-  } catch (error) {
-    console.error('Error seeding Firestore:', error);
-  }
-};
 
-export const forceSyncAllToFirestore = async (
-  adminUsers: AdminUser[],
-  rooms: Room[],
-  packages: Package[],
-  bookings: Booking[],
-  resortInfo: ResortInfo,
-  paymentSettings: PaymentSettings,
-  chatThreads: ChatThread[],
-  addOns?: AddOnService[]
-): Promise<boolean> => {
-  try {
-    for (const u of adminUsers) {
-      await setDoc(doc(db, COLLECTIONS.ADMIN_USERS, u.id), cleanForFirestore(u), { merge: true });
-    }
-    for (const r of rooms) {
-      await setDoc(doc(db, COLLECTIONS.ROOMS, r.id), cleanForFirestore(r), { merge: true });
-    }
-    for (const p of packages) {
-      await setDoc(doc(db, COLLECTIONS.PACKAGES, p.id), cleanForFirestore(p), { merge: true });
-    }
-    if (addOns && addOns.length > 0) {
-      for (const a of addOns) {
-        await setDoc(doc(db, COLLECTIONS.ADD_ONS, a.id), cleanForFirestore(a), { merge: true });
+      // 5. Seed Amenities
+      for (const a of defaultAmenities) {
+        await setDoc(doc(db, COLLECTIONS.AMENITIES, a.id), cleanForFirestore(a));
       }
+
+      // 6. Seed Gallery
+      for (const g of defaultGallery) {
+        await setDoc(doc(db, COLLECTIONS.GALLERY, g.id), cleanForFirestore(g));
+      }
+
+      // 7. Seed Reviews
+      for (const rev of defaultReviews) {
+        await setDoc(doc(db, COLLECTIONS.REVIEWS, rev.id), cleanForFirestore(rev));
+      }
+
+      // 8. Seed Settings
+      await setDoc(doc(db, COLLECTIONS.SETTINGS, SETTINGS_DOCS.RESORT_INFO), cleanForFirestore(defaultResortInfo));
+      await setDoc(doc(db, COLLECTIONS.SETTINGS, SETTINGS_DOCS.PAYMENT_SETTINGS), cleanForFirestore(defaultPaymentSettings));
+      await setDoc(doc(db, COLLECTIONS.SETTINGS, SETTINGS_DOCS.NOTIFICATION_TEMPLATES), cleanForFirestore(defaultNotificationTemplates));
+
+      // Mark initialized
+      await setDoc(initDocRef, {
+        initialized: true,
+        initializedAt: new Date().toISOString(),
+        schemaVersion: 1,
+      });
+
+      console.log('[Firestore] Default seed completed successfully.');
+      console.log('[Firestore] Initialization completed.');
+    } catch (error) {
+      console.error('[Firestore] Error checking or seeding Firestore:', error);
+      console.log('[Firestore] Firestore read failed - defaults will NOT overwrite existing data');
     }
-    for (const b of bookings) {
-      await setDoc(doc(db, COLLECTIONS.BOOKINGS, b.id), cleanForFirestore(b), { merge: true });
-    }
-    await setDoc(doc(db, COLLECTIONS.SETTINGS, 'resort_info'), cleanForFirestore(resortInfo), { merge: true });
-    await setDoc(doc(db, COLLECTIONS.SETTINGS, 'payment_settings'), cleanForFirestore(paymentSettings), { merge: true });
-    for (const t of chatThreads) {
-      await setDoc(doc(db, COLLECTIONS.CHAT_THREADS, t.id), cleanForFirestore(t), { merge: true });
-    }
-    return true;
-  } catch (error) {
-    console.error('Error performing full Firebase sync:', error);
-    return false;
-  }
+  })();
+
+  return initializationPromise;
 };
 
-// Helper to log errors gracefully during offline mode
-const handleFirestoreError = (collectionName: string, err: any) => {
-  if (
-    err?.code === 'unavailable' ||
-    err?.message?.includes('Could not reach Cloud Firestore') ||
-    err?.message?.includes('backend')
-  ) {
-    console.warn(`[Firestore Offline Mode] Operating on local cache for '${collectionName}'. Reconnecting automatically...`);
-  } else {
-    console.error(`Error in ${collectionName} snapshot:`, err);
-  }
-};
-
-// --- REALTIME SUBSCRIBERS ---
+// ==========================================
+// REAL-TIME SUBSCRIPTIONS
+// ==========================================
 
 export const subscribeAdminUsers = (callback: (users: AdminUser[]) => void) => {
   return onSnapshot(
     collection(db, COLLECTIONS.ADMIN_USERS),
     (snapshot) => {
-      const users: AdminUser[] = [];
-      snapshot.forEach((doc) => {
-        users.push(doc.data() as AdminUser);
-      });
-      if (users.length > 0) {
-        callback(users);
-      }
+      const users: AdminUser[] = snapshot.docs.map((d) => ({
+        ...(d.data() as AdminUser),
+        id: d.id,
+      }));
+      callback(users);
     },
-    (err) => handleFirestoreError('admin_users', err)
+    (err) => handleFirestoreError(COLLECTIONS.ADMIN_USERS, err)
   );
 };
 
@@ -234,13 +225,13 @@ export const subscribeBookings = (callback: (bookings: Booking[]) => void) => {
   return onSnapshot(
     collection(db, COLLECTIONS.BOOKINGS),
     (snapshot) => {
-      const bookings: Booking[] = [];
-      snapshot.forEach((doc) => {
-        bookings.push(doc.data() as Booking);
-      });
+      const bookings: Booking[] = snapshot.docs.map((d) => ({
+        ...(d.data() as Booking),
+        id: d.id,
+      }));
       callback(bookings);
     },
-    (err) => handleFirestoreError('bookings', err)
+    (err) => handleFirestoreError(COLLECTIONS.BOOKINGS, err)
   );
 };
 
@@ -248,15 +239,13 @@ export const subscribeRooms = (callback: (rooms: Room[]) => void) => {
   return onSnapshot(
     collection(db, COLLECTIONS.ROOMS),
     (snapshot) => {
-      const rooms: Room[] = [];
-      snapshot.forEach((doc) => {
-        rooms.push(doc.data() as Room);
-      });
-      if (rooms.length > 0) {
-        callback(rooms);
-      }
+      const rooms: Room[] = snapshot.docs.map((d) => ({
+        ...(d.data() as Room),
+        id: d.id,
+      }));
+      callback(rooms);
     },
-    (err) => handleFirestoreError('rooms', err)
+    (err) => handleFirestoreError(COLLECTIONS.ROOMS, err)
   );
 };
 
@@ -264,15 +253,13 @@ export const subscribePackages = (callback: (packages: Package[]) => void) => {
   return onSnapshot(
     collection(db, COLLECTIONS.PACKAGES),
     (snapshot) => {
-      const pkgs: Package[] = [];
-      snapshot.forEach((doc) => {
-        pkgs.push(doc.data() as Package);
-      });
-      if (pkgs.length > 0) {
-        callback(pkgs);
-      }
+      const packages: Package[] = snapshot.docs.map((d) => ({
+        ...(d.data() as Package),
+        id: d.id,
+      }));
+      callback(packages);
     },
-    (err) => handleFirestoreError('packages', err)
+    (err) => handleFirestoreError(COLLECTIONS.PACKAGES, err)
   );
 };
 
@@ -280,15 +267,55 @@ export const subscribeAddOns = (callback: (addOns: AddOnService[]) => void) => {
   return onSnapshot(
     collection(db, COLLECTIONS.ADD_ONS),
     (snapshot) => {
-      const addOns: AddOnService[] = [];
-      snapshot.forEach((doc) => {
-        addOns.push(doc.data() as AddOnService);
-      });
-      if (addOns.length > 0) {
-        callback(addOns);
-      }
+      const addOns: AddOnService[] = snapshot.docs.map((d) => ({
+        ...(d.data() as AddOnService),
+        id: d.id,
+      }));
+      callback(addOns);
     },
-    (err) => handleFirestoreError('add_ons', err)
+    (err) => handleFirestoreError(COLLECTIONS.ADD_ONS, err)
+  );
+};
+
+export const subscribeAmenities = (callback: (amenities: Amenity[]) => void) => {
+  return onSnapshot(
+    collection(db, COLLECTIONS.AMENITIES),
+    (snapshot) => {
+      const amenities: Amenity[] = snapshot.docs.map((d) => ({
+        ...(d.data() as Amenity),
+        id: d.id,
+      }));
+      callback(amenities);
+    },
+    (err) => handleFirestoreError(COLLECTIONS.AMENITIES, err)
+  );
+};
+
+export const subscribeGallery = (callback: (gallery: GalleryItem[]) => void) => {
+  return onSnapshot(
+    collection(db, COLLECTIONS.GALLERY),
+    (snapshot) => {
+      const gallery: GalleryItem[] = snapshot.docs.map((d) => ({
+        ...(d.data() as GalleryItem),
+        id: d.id,
+      }));
+      callback(gallery);
+    },
+    (err) => handleFirestoreError(COLLECTIONS.GALLERY, err)
+  );
+};
+
+export const subscribeReviews = (callback: (reviews: Testimonial[]) => void) => {
+  return onSnapshot(
+    collection(db, COLLECTIONS.REVIEWS),
+    (snapshot) => {
+      const reviews: Testimonial[] = snapshot.docs.map((d) => ({
+        ...(d.data() as Testimonial),
+        id: d.id,
+      }));
+      callback(reviews);
+    },
+    (err) => handleFirestoreError(COLLECTIONS.REVIEWS, err)
   );
 };
 
@@ -296,183 +323,184 @@ export const subscribeChatThreads = (callback: (threads: ChatThread[]) => void) 
   return onSnapshot(
     collection(db, COLLECTIONS.CHAT_THREADS),
     (snapshot) => {
-      const threads: ChatThread[] = [];
-      snapshot.forEach((doc) => {
-        threads.push(doc.data() as ChatThread);
-      });
+      const threads: ChatThread[] = snapshot.docs.map((d) => ({
+        ...(d.data() as ChatThread),
+        id: d.id,
+      }));
       callback(threads);
     },
-    (err) => handleFirestoreError('chat_threads', err)
+    (err) => handleFirestoreError(COLLECTIONS.CHAT_THREADS, err)
   );
 };
 
 export const subscribeSettings = (
   onResortInfo: (info: ResortInfo) => void,
-  onPaymentSettings: (settings: PaymentSettings) => void
+  onPaymentSettings: (settings: PaymentSettings) => void,
+  onNotificationTemplates?: (templates: NotificationTemplates) => void
 ) => {
   return onSnapshot(
     collection(db, COLLECTIONS.SETTINGS),
     (snapshot) => {
       snapshot.forEach((docSnap) => {
-        if (docSnap.id === 'resort_info') {
+        if (docSnap.id === SETTINGS_DOCS.RESORT_INFO) {
           onResortInfo(docSnap.data() as ResortInfo);
-        } else if (docSnap.id === 'payment_settings') {
+        } else if (docSnap.id === SETTINGS_DOCS.PAYMENT_SETTINGS) {
           onPaymentSettings(docSnap.data() as PaymentSettings);
+        } else if (docSnap.id === SETTINGS_DOCS.NOTIFICATION_TEMPLATES && onNotificationTemplates) {
+          onNotificationTemplates(docSnap.data() as NotificationTemplates);
         }
       });
     },
-    (err) => handleFirestoreError('settings', err)
+    (err) => handleFirestoreError(COLLECTIONS.SETTINGS, err)
   );
 };
 
-// --- CRUD WRITERS ---
+// ==========================================
+// PERSISTENT CRUD OPERATIONS
+// ==========================================
 
 export const saveAdminUserToFirestore = async (user: AdminUser) => {
-  try {
-    await setDoc(doc(db, COLLECTIONS.ADMIN_USERS, user.id), cleanForFirestore(user), { merge: true });
-  } catch (err) {
-    console.error('Firestore saveAdminUser error:', err);
-    throw err;
-  }
+  return setDoc(doc(db, COLLECTIONS.ADMIN_USERS, user.id), cleanForFirestore(user));
 };
 
 export const deleteAdminUserFromFirestore = async (userId: string) => {
-  try {
-    await deleteDoc(doc(db, COLLECTIONS.ADMIN_USERS, userId));
-  } catch (err) {
-    console.error('Firestore deleteAdminUser error:', err);
-    throw err;
-  }
+  return deleteDoc(doc(db, COLLECTIONS.ADMIN_USERS, userId));
 };
 
 export const saveBookingToFirestore = async (booking: Booking) => {
-  try {
-    await setDoc(doc(db, COLLECTIONS.BOOKINGS, booking.id), cleanForFirestore(booking), { merge: true });
-  } catch (err) {
-    console.error('Firestore saveBooking error:', err);
-    throw err;
-  }
+  return setDoc(doc(db, COLLECTIONS.BOOKINGS, booking.id), cleanForFirestore(booking));
 };
 
 export const deleteBookingFromFirestore = async (bookingId: string) => {
-  try {
-    await deleteDoc(doc(db, COLLECTIONS.BOOKINGS, bookingId));
-  } catch (err) {
-    console.error('Firestore deleteBooking error:', err);
-    throw err;
-  }
-};
-
-export const saveRoomToFirestore = async (room: Room) => {
-  try {
-    await setDoc(doc(db, COLLECTIONS.ROOMS, room.id), cleanForFirestore(room), { merge: true });
-  } catch (err) {
-    console.error('Firestore saveRoom error:', err);
-    throw err;
-  }
-};
-
-export const deleteRoomFromFirestore = async (roomId: string) => {
-  try {
-    await deleteDoc(doc(db, COLLECTIONS.ROOMS, roomId));
-  } catch (err) {
-    console.error('Firestore deleteRoom error:', err);
-    throw err;
-  }
-};
-
-export const savePackageToFirestore = async (pkg: Package) => {
-  try {
-    await setDoc(doc(db, COLLECTIONS.PACKAGES, pkg.id), cleanForFirestore(pkg), { merge: true });
-  } catch (err) {
-    console.error('Firestore savePackage error:', err);
-    throw err;
-  }
-};
-
-export const deletePackageFromFirestore = async (pkgId: string) => {
-  try {
-    await deleteDoc(doc(db, COLLECTIONS.PACKAGES, pkgId));
-  } catch (err) {
-    console.error('Firestore deletePackage error:', err);
-    throw err;
-  }
-};
-
-export const saveAddOnToFirestore = async (addon: AddOnService) => {
-  try {
-    await setDoc(doc(db, COLLECTIONS.ADD_ONS, addon.id), cleanForFirestore(addon), { merge: true });
-  } catch (err) {
-    console.error('Firestore saveAddOn error:', err);
-    throw err;
-  }
-};
-
-export const deleteAddOnFromFirestore = async (addonId: string) => {
-  try {
-    await deleteDoc(doc(db, COLLECTIONS.ADD_ONS, addonId));
-  } catch (err) {
-    console.error('Firestore deleteAddOn error:', err);
-    throw err;
-  }
-};
-
-export const saveChatThreadToFirestore = async (thread: ChatThread) => {
-  try {
-    await setDoc(doc(db, COLLECTIONS.CHAT_THREADS, thread.id), cleanForFirestore(thread), { merge: true });
-  } catch (err) {
-    console.error('Firestore saveChatThread error:', err);
-    throw err;
-  }
-};
-
-export const deleteChatThreadFromFirestore = async (threadId: string) => {
-  try {
-    await deleteDoc(doc(db, COLLECTIONS.CHAT_THREADS, threadId));
-  } catch (err) {
-    console.error('Firestore deleteChatThread error:', err);
-    throw err;
-  }
+  return deleteDoc(doc(db, COLLECTIONS.BOOKINGS, bookingId));
 };
 
 export const clearAllBookingsFromFirestore = async () => {
-  try {
-    const snap = await getDocs(collection(db, COLLECTIONS.BOOKINGS));
-    const batchPromises = snap.docs.map((d) => deleteDoc(doc(db, COLLECTIONS.BOOKINGS, d.id)));
-    await Promise.all(batchPromises);
-    console.log(`Firestore: Cleared ${snap.docs.length} bookings.`);
-  } catch (err) {
-    console.error('Firestore clearAllBookings error:', err);
-    throw err;
-  }
+  const snap = await getDocs(collection(db, COLLECTIONS.BOOKINGS));
+  const batch = writeBatch(db);
+  snap.docs.forEach((d) => batch.delete(d.ref));
+  return batch.commit();
+};
+
+export const saveRoomToFirestore = async (room: Room) => {
+  return setDoc(doc(db, COLLECTIONS.ROOMS, room.id), cleanForFirestore(room));
+};
+
+export const deleteRoomFromFirestore = async (roomId: string) => {
+  return deleteDoc(doc(db, COLLECTIONS.ROOMS, roomId));
+};
+
+export const savePackageToFirestore = async (pkg: Package) => {
+  return setDoc(doc(db, COLLECTIONS.PACKAGES, pkg.id), cleanForFirestore(pkg));
+};
+
+export const deletePackageFromFirestore = async (pkgId: string) => {
+  return deleteDoc(doc(db, COLLECTIONS.PACKAGES, pkgId));
+};
+
+export const saveAddOnToFirestore = async (addon: AddOnService) => {
+  return setDoc(doc(db, COLLECTIONS.ADD_ONS, addon.id), cleanForFirestore(addon));
+};
+
+export const deleteAddOnFromFirestore = async (addonId: string) => {
+  return deleteDoc(doc(db, COLLECTIONS.ADD_ONS, addonId));
+};
+
+export const saveAmenityToFirestore = async (amenity: Amenity) => {
+  return setDoc(doc(db, COLLECTIONS.AMENITIES, amenity.id), cleanForFirestore(amenity));
+};
+
+export const deleteAmenityFromFirestore = async (amenityId: string) => {
+  return deleteDoc(doc(db, COLLECTIONS.AMENITIES, amenityId));
+};
+
+export const saveGalleryItemToFirestore = async (item: GalleryItem) => {
+  return setDoc(doc(db, COLLECTIONS.GALLERY, item.id), cleanForFirestore(item));
+};
+
+export const deleteGalleryItemFromFirestore = async (itemId: string) => {
+  return deleteDoc(doc(db, COLLECTIONS.GALLERY, itemId));
+};
+
+export const saveReviewToFirestore = async (review: Testimonial) => {
+  return setDoc(doc(db, COLLECTIONS.REVIEWS, review.id), cleanForFirestore(review));
+};
+
+export const deleteReviewFromFirestore = async (reviewId: string) => {
+  return deleteDoc(doc(db, COLLECTIONS.REVIEWS, reviewId));
+};
+
+export const saveChatThreadToFirestore = async (thread: ChatThread) => {
+  return setDoc(doc(db, COLLECTIONS.CHAT_THREADS, thread.id), cleanForFirestore(thread));
+};
+
+export const deleteChatThreadFromFirestore = async (threadId: string) => {
+  return deleteDoc(doc(db, COLLECTIONS.CHAT_THREADS, threadId));
 };
 
 export const clearAllChatThreadsFromFirestore = async () => {
-  try {
-    const snap = await getDocs(collection(db, COLLECTIONS.CHAT_THREADS));
-    const batchPromises = snap.docs.map((d) => deleteDoc(doc(db, COLLECTIONS.CHAT_THREADS, d.id)));
-    await Promise.all(batchPromises);
-    console.log(`Firestore: Cleared ${snap.docs.length} chat threads.`);
-  } catch (err) {
-    console.error('Firestore clearAllChatThreads error:', err);
-    throw err;
-  }
+  const snap = await getDocs(collection(db, COLLECTIONS.CHAT_THREADS));
+  const batch = writeBatch(db);
+  snap.docs.forEach((d) => batch.delete(d.ref));
+  return batch.commit();
 };
 
 export const saveResortInfoToFirestore = async (info: ResortInfo) => {
-  try {
-    await setDoc(doc(db, COLLECTIONS.SETTINGS, 'resort_info'), cleanForFirestore(info), { merge: true });
-  } catch (err) {
-    console.error('Firestore saveResortInfo error:', err);
-    throw err;
-  }
+  return setDoc(doc(db, COLLECTIONS.SETTINGS, SETTINGS_DOCS.RESORT_INFO), cleanForFirestore(info));
 };
 
 export const savePaymentSettingsToFirestore = async (settings: PaymentSettings) => {
-  try {
-    await setDoc(doc(db, COLLECTIONS.SETTINGS, 'payment_settings'), cleanForFirestore(settings), { merge: true });
-  } catch (err) {
-    console.error('Firestore savePaymentSettings error:', err);
-    throw err;
+  return setDoc(doc(db, COLLECTIONS.SETTINGS, SETTINGS_DOCS.PAYMENT_SETTINGS), cleanForFirestore(settings));
+};
+
+export const saveNotificationTemplatesToFirestore = async (templates: NotificationTemplates) => {
+  return setDoc(doc(db, COLLECTIONS.SETTINGS, SETTINGS_DOCS.NOTIFICATION_TEMPLATES), cleanForFirestore(templates));
+};
+
+/**
+ * Manual sync function for Super Admin console.
+ */
+export const forceSyncAllToFirestore = async (
+  users: AdminUser[],
+  rooms: Room[],
+  packages: Package[],
+  addOns: AddOnService[],
+  amenities: Amenity[],
+  gallery: GalleryItem[],
+  reviews: Testimonial[],
+  resortInfo: ResortInfo,
+  paymentSettings: PaymentSettings,
+  notificationTemplates: NotificationTemplates
+) => {
+  for (const u of users) {
+    await saveAdminUserToFirestore(u);
   }
+  for (const r of rooms) {
+    await saveRoomToFirestore(r);
+  }
+  for (const p of packages) {
+    await savePackageToFirestore(p);
+  }
+  for (const a of addOns) {
+    await saveAddOnToFirestore(a);
+  }
+  for (const am of amenities) {
+    await saveAmenityToFirestore(am);
+  }
+  for (const g of gallery) {
+    await saveGalleryItemToFirestore(g);
+  }
+  for (const rev of reviews) {
+    await saveReviewToFirestore(rev);
+  }
+  await saveResortInfoToFirestore(resortInfo);
+  await savePaymentSettingsToFirestore(paymentSettings);
+  await saveNotificationTemplatesToFirestore(notificationTemplates);
+
+  // Guarantee initialized flag
+  await setDoc(doc(db, COLLECTIONS.SETTINGS, SETTINGS_DOCS.APP_INITIALIZED), {
+    initialized: true,
+    initializedAt: new Date().toISOString(),
+    schemaVersion: 1,
+  });
 };

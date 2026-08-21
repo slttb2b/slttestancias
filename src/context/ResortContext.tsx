@@ -15,8 +15,6 @@ import {
   ChatThread,
   ChatMessage,
   AdminUser,
-  AdminUserRole,
-  AdminUserPermissions,
   AddOnService,
 } from '../types';
 import {
@@ -27,8 +25,6 @@ import {
   INITIAL_AMENITIES,
   INITIAL_GALLERY,
   INITIAL_REVIEWS,
-  INITIAL_BOOKINGS,
-  INITIAL_CHAT_THREADS,
   ADD_ON_SERVICES,
   DEFAULT_NOTIFICATION_TEMPLATES,
   formatNotificationMessage,
@@ -40,6 +36,9 @@ import {
   subscribeRooms,
   subscribePackages,
   subscribeAddOns,
+  subscribeAmenities,
+  subscribeGallery,
+  subscribeReviews,
   subscribeChatThreads,
   subscribeSettings,
   saveAdminUserToFirestore,
@@ -52,12 +51,19 @@ import {
   deletePackageFromFirestore,
   saveAddOnToFirestore,
   deleteAddOnFromFirestore,
+  saveAmenityToFirestore,
+  deleteAmenityFromFirestore,
+  saveGalleryItemToFirestore,
+  deleteGalleryItemFromFirestore,
+  saveReviewToFirestore,
+  deleteReviewFromFirestore,
   saveChatThreadToFirestore,
   deleteChatThreadFromFirestore,
   clearAllBookingsFromFirestore,
   clearAllChatThreadsFromFirestore,
   saveResortInfoToFirestore,
   savePaymentSettingsToFirestore,
+  saveNotificationTemplatesToFirestore,
   forceSyncAllToFirestore,
 } from '../services/firestoreService';
 
@@ -100,10 +106,19 @@ interface ResortContextType {
   setPackages: React.Dispatch<React.SetStateAction<Package[]>>;
   amenities: Amenity[];
   setAmenities: React.Dispatch<React.SetStateAction<Amenity[]>>;
+  addAmenity: (amenity: Amenity) => Promise<void>;
+  updateAmenity: (amenity: Amenity) => Promise<void>;
+  deleteAmenity: (amenityId: string) => Promise<void>;
   gallery: GalleryItem[];
   setGallery: React.Dispatch<React.SetStateAction<GalleryItem[]>>;
+  addGalleryItem: (item: GalleryItem) => Promise<void>;
+  updateGalleryItem: (item: GalleryItem) => Promise<void>;
+  deleteGalleryItem: (itemId: string) => Promise<void>;
   reviews: Testimonial[];
   setReviews: React.Dispatch<React.SetStateAction<Testimonial[]>>;
+  addReview: (review: Testimonial) => Promise<void>;
+  updateReview: (review: Testimonial) => Promise<void>;
+  deleteReview: (reviewId: string) => Promise<void>;
   bookings: Booking[];
   
   // Theme State
@@ -172,7 +187,7 @@ interface ResortContextType {
   
   // Notification Templates & Logs
   notificationTemplates: NotificationTemplates;
-  updateNotificationTemplates: (templates: NotificationTemplates) => void;
+  updateNotificationTemplates: (templates: NotificationTemplates) => Promise<boolean> | void;
   notificationLogs: NotificationLog[];
   sendNotification: (
     booking: Booking,
@@ -234,7 +249,7 @@ const DEFAULT_ADMIN_USERS: AdminUser[] = [
     password: 'Slttestancias123@',
     fullName: 'Master Resort Administrator',
     email: 'reservations@slttestanciasresort.com',
-    phone: '09615993305',
+    phone: '09054965912',
     role: 'super_admin',
     permissions: {
       manageBookings: true,
@@ -293,48 +308,27 @@ const DEFAULT_ADMIN_USERS: AdminUser[] = [
 export const ResortProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [activeTab, setActiveTab] = useState<ActiveTab>('home');
 
-  // Super Admin & User Management State
-  const [adminUsers, setAdminUsers] = useState<AdminUser[]>(() => {
+  // Helper for safe read-only/cache writes
+  const safeSave = (key: string, value: any) => {
     try {
-      const saved = localStorage.getItem('sltt_admin_users_v1');
-      if (saved) {
-        const parsed: AdminUser[] = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          const hasMaster = parsed.some((u) => u.username === 'SLTTESTANCIA_ADMIN');
-          if (hasMaster) {
-            return parsed.map((u) =>
-              u.username === 'SLTTESTANCIA_ADMIN'
-                ? { ...u, password: 'Slttestancias123@', role: 'super_admin', isActive: true }
-                : u
-            );
-          } else {
-            return [DEFAULT_ADMIN_USERS[0], ...parsed];
-          }
-        }
-      }
+      localStorage.setItem(key, JSON.stringify(value));
     } catch (e) {
-      console.error('Error loading admin users:', e);
+      console.warn(`Storage save warning for ${key}:`, e);
     }
-    return DEFAULT_ADMIN_USERS;
-  });
+  };
+
+  // 1. Admin Users State
+  const [adminUsers, setAdminUsers] = useState<AdminUser[]>(DEFAULT_ADMIN_USERS);
 
   const [currentAdminUser, setCurrentAdminUser] = useState<AdminUser | null>(() => {
     try {
       const saved = localStorage.getItem('sltt_current_admin_user');
       if (saved) return JSON.parse(saved);
     } catch (e) {
-      console.error('Error loading current admin user:', e);
+      console.error('Error loading current admin user from cache:', e);
     }
     return null;
   });
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('sltt_admin_users_v1', JSON.stringify(adminUsers));
-    } catch (e) {
-      console.warn('Storage save error:', e);
-    }
-  }, [adminUsers]);
 
   useEffect(() => {
     try {
@@ -347,46 +341,40 @@ export const ResortProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       console.warn('Storage save error:', e);
     }
   }, [currentAdminUser]);
+
+  // 2. Resort Information State
   const [resortInfo, setResortInfo] = useState<ResortInfo>(() => {
     try {
       const saved = localStorage.getItem('sltt_resort_info');
-      if (!saved) return INITIAL_RESORT_INFO;
-      const parsed = JSON.parse(saved);
-      if (parsed) {
-        if (parsed.contactNumber === '09615993305' || parsed.contactNumber === '09161669188') {
-          parsed.contactNumber = '09054965912';
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && typeof parsed === 'object') {
+          return { ...INITIAL_RESORT_INFO, ...parsed };
         }
-        if (!parsed.businessHours || parsed.businessHours === 'Open Daily 8:00 AM - 9:00 PM (Front Desk 24/7)') {
-          parsed.businessHours = 'Open Daily 24/7 (Front Desk 24/7)';
-        }
-        if (!parsed.email || parsed.email === 'slttestanciasinquire@gmail.com' || parsed.email === 'contact@slttb2btravelsolutions.com') {
-          parsed.email = 'reservations@slttestanciasresort.com';
-        }
-        return { ...INITIAL_RESORT_INFO, ...parsed };
       }
     } catch (err) {
-      console.error('Error loading resort info from localStorage:', err);
+      console.warn('Cache read note for resort_info:', err);
     }
     return INITIAL_RESORT_INFO;
   });
 
+  // 3. Payment Settings State
   const [paymentSettings, setPaymentSettings] = useState<PaymentSettings>(() => {
     try {
       const saved = localStorage.getItem('sltt_payment_settings');
-      if (!saved) return INITIAL_PAYMENT_SETTINGS;
-      const parsed = JSON.parse(saved);
-      if (parsed) {
-        if (parsed.gcash && (parsed.gcash.accountNumber === '09615993305' || parsed.gcash.accountNumber === '09161669188')) {
-          parsed.gcash.accountNumber = '09054965912';
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && typeof parsed === 'object') {
+          return { ...INITIAL_PAYMENT_SETTINGS, ...parsed };
         }
-        return { ...INITIAL_PAYMENT_SETTINGS, ...parsed };
       }
     } catch (err) {
-      console.error('Error loading payment settings from localStorage:', err);
+      console.warn('Cache read note for payment_settings:', err);
     }
     return INITIAL_PAYMENT_SETTINGS;
   });
 
+  // 4. Customization & Theme
   const [customization, setCustomization] = useState<ResortCustomization>({
     primaryColor: '#0F5147',
     secondaryColor: '#E07A5F',
@@ -395,8 +383,12 @@ export const ResortProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   });
 
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
-    const saved = localStorage.getItem('sltt_theme');
-    return (saved as 'light' | 'dark') || 'light';
+    try {
+      const saved = localStorage.getItem('sltt_theme');
+      return (saved as 'light' | 'dark') || 'light';
+    } catch {
+      return 'light';
+    }
   });
 
   const toggleTheme = () => {
@@ -411,96 +403,16 @@ export const ResortProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   }, [theme]);
 
-  // Rooms state loaded from initial state, synchronized with Firebase/Firestore
+  // 5. Core Entities (initialized from default data, immediately updated from Firestore)
   const [rooms, setRooms] = useState<Room[]>(INITIAL_ROOMS);
+  const [packages, setPackages] = useState<Package[]>(INITIAL_PACKAGES);
+  const [addOns, setAddOns] = useState<AddOnService[]>(ADD_ON_SERVICES);
+  const [amenities, setAmenities] = useState<Amenity[]>(INITIAL_AMENITIES);
+  const [gallery, setGallery] = useState<GalleryItem[]>(INITIAL_GALLERY);
+  const [reviews, setReviews] = useState<Testimonial[]>(INITIAL_REVIEWS);
+  const [bookings, setBookings] = useState<Booking[]>([]);
 
-  // Safe one-time cleanup of obsolete sltt_rooms_v3 cache
-  useEffect(() => {
-    try {
-      localStorage.removeItem('sltt_rooms_v3');
-    } catch (e) {
-      console.warn('Unable to clear old room cache:', e);
-    }
-  }, []);
-
-  const [packages, setPackages] = useState<Package[]>(() => {
-    try {
-      const saved = localStorage.getItem('sltt_packages');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed;
-      }
-    } catch (e) {
-      console.error('Error loading packages:', e);
-    }
-    return INITIAL_PACKAGES;
-  });
-
-  const [addOns, setAddOns] = useState<AddOnService[]>(() => {
-    try {
-      const saved = localStorage.getItem('sltt_addons_v1');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      }
-    } catch (e) {
-      console.error('Error loading add-ons:', e);
-    }
-    return ADD_ON_SERVICES;
-  });
-
-  const [amenities, setAmenities] = useState<Amenity[]>(() => {
-    try {
-      const saved = localStorage.getItem('sltt_amenities_v2');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed;
-      }
-    } catch (e) {
-      console.error('Error loading amenities:', e);
-    }
-    return INITIAL_AMENITIES;
-  });
-
-  const [gallery, setGallery] = useState<GalleryItem[]>(() => {
-    try {
-      const saved = localStorage.getItem('sltt_gallery');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed;
-      }
-    } catch (e) {
-      console.error('Error loading gallery:', e);
-    }
-    return INITIAL_GALLERY;
-  });
-
-  const [reviews, setReviews] = useState<Testimonial[]>(() => {
-    try {
-      const saved = localStorage.getItem('sltt_reviews');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed;
-      }
-    } catch (e) {
-      console.error('Error loading reviews:', e);
-    }
-    return INITIAL_REVIEWS;
-  });
-
-  const [bookings, setBookings] = useState<Booking[]>(() => {
-    try {
-      const saved = localStorage.getItem('sltt_bookings');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed;
-      }
-    } catch (e) {
-      console.error('Error loading bookings:', e);
-    }
-    return [];
-  });
-
+  // 6. Search Filters
   const [searchFilters, setSearchFilters] = useState<QuickSearchFilters>({
     checkInDate: getTomorrowDate(),
     checkOutDate: getAfterTomorrowDate(),
@@ -509,58 +421,16 @@ export const ResortProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     roomType: 'All',
   });
 
+  // 7. UI / Modal States
   const [isBookingModalOpen, setIsBookingModalOpen] = useState(false);
   const [selectedRoomForBooking, setSelectedRoomForBooking] = useState<Room | null>(null);
   const [selectedPackageForBooking, setSelectedPackageForBooking] = useState<Package | null>(null);
-  
   const [selectedRoomDetails, setSelectedRoomDetails] = useState<Room | null>(null);
   const [activeLightboxIndex, setActiveLightboxIndex] = useState<number | null>(null);
   const [lastSubmittedBooking, setLastSubmittedBooking] = useState<Booking | null>(null);
-  
   const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false);
   const [isVisualEditMode, setIsVisualEditMode] = useState(false);
   const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'error' | 'info' } | null>(null);
-
-  // Sync state to local storage
-  const safeSave = (key: string, value: any) => {
-    try {
-      localStorage.setItem(key, JSON.stringify(value));
-    } catch (e) {
-      console.warn(`Storage save error for ${key}:`, e);
-    }
-  };
-
-  useEffect(() => {
-    safeSave('sltt_resort_info', resortInfo);
-  }, [resortInfo]);
-
-  useEffect(() => {
-    safeSave('sltt_payment_settings', paymentSettings);
-  }, [paymentSettings]);
-
-  useEffect(() => {
-    safeSave('sltt_packages', packages);
-  }, [packages]);
-
-  useEffect(() => {
-    safeSave('sltt_addons_v1', addOns);
-  }, [addOns]);
-
-  useEffect(() => {
-    safeSave('sltt_amenities_v2', amenities);
-  }, [amenities]);
-
-  useEffect(() => {
-    safeSave('sltt_gallery', gallery);
-  }, [gallery]);
-
-  useEffect(() => {
-    safeSave('sltt_reviews', reviews);
-  }, [reviews]);
-
-  useEffect(() => {
-    safeSave('sltt_bookings', bookings);
-  }, [bookings]);
 
   const showToast = (text: string, type: 'success' | 'error' | 'info' = 'success') => {
     setToastMessage({ text, type });
@@ -569,23 +439,8 @@ export const ResortProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }, 4000);
   };
 
-  const [notificationTemplates, setNotificationTemplates] = useState<NotificationTemplates>(() => {
-    try {
-      const saved = localStorage.getItem('sltt_notification_templates');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed && typeof parsed === 'object') {
-          return {
-            ...DEFAULT_NOTIFICATION_TEMPLATES,
-            ...parsed,
-          };
-        }
-      }
-    } catch (e) {
-      console.error('Error loading notification templates:', e);
-    }
-    return DEFAULT_NOTIFICATION_TEMPLATES;
-  });
+  // 8. Notification Templates & Logs
+  const [notificationTemplates, setNotificationTemplates] = useState<NotificationTemplates>(DEFAULT_NOTIFICATION_TEMPLATES);
 
   const [notificationLogs, setNotificationLogs] = useState<NotificationLog[]>(() => {
     try {
@@ -595,20 +450,16 @@ export const ResortProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         if (Array.isArray(parsed)) return parsed;
       }
     } catch (e) {
-      console.error('Error loading notification logs:', e);
+      console.warn('Cache read note for notification_logs:', e);
     }
     return [];
   });
 
   useEffect(() => {
-    safeSave('sltt_notification_templates', notificationTemplates);
-  }, [notificationTemplates]);
-
-  useEffect(() => {
     safeSave('sltt_notification_logs', notificationLogs);
   }, [notificationLogs]);
 
-  // Live Chat state
+  // 9. Live Chat State
   const [isLiveChatOpen, setIsLiveChatOpen] = useState(false);
   const [currentCustomerThreadId, setCurrentCustomerThreadId] = useState<string | null>(() => {
     try {
@@ -617,23 +468,7 @@ export const ResortProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       return null;
     }
   });
-
-  const [chatThreads, setChatThreads] = useState<ChatThread[]>(() => {
-    try {
-      const saved = localStorage.getItem('sltt_chat_threads');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed;
-      }
-    } catch (e) {
-      console.error('Error loading chat threads:', e);
-    }
-    return [];
-  });
-
-  useEffect(() => {
-    safeSave('sltt_chat_threads', chatThreads);
-  }, [chatThreads]);
+  const [chatThreads, setChatThreads] = useState<ChatThread[]>([]);
 
   useEffect(() => {
     if (currentCustomerThreadId) {
@@ -645,73 +480,102 @@ export const ResortProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   }, [currentCustomerThreadId]);
 
-  // Active purge: remove all sample/demo bookings and sample chat threads
-  useEffect(() => {
-    try {
-      const demoPurged = localStorage.getItem('sltt_demo_purge_complete_v3');
-      if (!demoPurged) {
-        localStorage.setItem('sltt_demo_purge_complete_v3', 'true');
-        
-        // Remove known demo IDs from Firestore
-        const demoBookingIds = [
-          'bkg-1', 'bkg-2', 'bkg-3', 'bkg-4', 'bkg-5',
-          'BK-88219', 'BK-90412', 'BK-95882', 'BK-99310',
-          'SLTT-2026-88219', 'SLTT-2026-90412', 'SLTT-2026-95882', 'SLTT-2026-99310'
-        ];
-        const demoChatIds = ['CHAT-1001', 'CHAT-1002', 'chat-1', 'chat-2'];
-
-        demoBookingIds.forEach((id) => deleteBookingFromFirestore(id).catch(() => {}));
-        demoChatIds.forEach((id) => deleteChatThreadFromFirestore(id).catch(() => {}));
-
-        // Also query and clear any bookings in Firestore if they are demo entries
-        clearAllBookingsFromFirestore().catch((e) => console.warn('Purge bookings error:', e));
-        clearAllChatThreadsFromFirestore().catch((e) => console.warn('Purge chat error:', e));
-
-        setBookings([]);
-        safeSave('sltt_bookings', []);
-
-        setChatThreads([]);
-        safeSave('sltt_chat_threads', []);
-
-        setCurrentCustomerThreadId(null);
-        localStorage.removeItem('sltt_current_chat_thread_id');
-      }
-    } catch (err) {
-      console.warn('Demo purge error:', err);
-    }
-  }, []);
-
   const isSavingResortInfoRef = useRef(false);
   const isSavingPaymentSettingsRef = useRef(false);
 
   // --- FIRESTORE DATABASE INITIALIZATION & REALTIME SYNC ---
   useEffect(() => {
+    console.log('[Firestore] App mounting: launching permanent initialization guard...');
+
     seedFirestoreIfEmpty(
       DEFAULT_ADMIN_USERS,
       INITIAL_ROOMS,
       INITIAL_PACKAGES,
-      [],
       INITIAL_RESORT_INFO,
       INITIAL_PAYMENT_SETTINGS,
-      [],
-      ADD_ON_SERVICES
+      ADD_ON_SERVICES,
+      INITIAL_AMENITIES,
+      INITIAL_GALLERY,
+      INITIAL_REVIEWS,
+      DEFAULT_NOTIFICATION_TEMPLATES
     );
 
-    const unsubUsers = subscribeAdminUsers((users) => setAdminUsers(users));
-    const unsubBookings = subscribeBookings((b) => setBookings(b));
-    const unsubRooms = subscribeRooms((r) => setRooms(r));
-    const unsubPackages = subscribePackages((p) => setPackages(p));
-    const unsubAddOns = subscribeAddOns((a) => setAddOns(a));
-    const unsubChat = subscribeChatThreads((t) => setChatThreads(t));
+    const unsubUsers = subscribeAdminUsers((users) => {
+      if (users && users.length > 0) {
+        setAdminUsers(users);
+        safeSave('sltt_admin_users_v1', users);
+      }
+    });
+
+    const unsubBookings = subscribeBookings((b) => {
+      setBookings(b || []);
+      safeSave('sltt_bookings', b || []);
+    });
+
+    const unsubRooms = subscribeRooms((r) => {
+      if (r) {
+        setRooms(r);
+        safeSave('sltt_rooms', r);
+      }
+    });
+
+    const unsubPackages = subscribePackages((p) => {
+      if (p) {
+        setPackages(p);
+        safeSave('sltt_packages', p);
+      }
+    });
+
+    const unsubAddOns = subscribeAddOns((a) => {
+      if (a) {
+        setAddOns(a);
+        safeSave('sltt_addons_v1', a);
+      }
+    });
+
+    const unsubAmenities = subscribeAmenities((am) => {
+      if (am) {
+        setAmenities(am);
+        safeSave('sltt_amenities_v2', am);
+      }
+    });
+
+    const unsubGallery = subscribeGallery((g) => {
+      if (g) {
+        setGallery(g);
+        safeSave('sltt_gallery', g);
+      }
+    });
+
+    const unsubReviews = subscribeReviews((rev) => {
+      if (rev) {
+        setReviews(rev);
+        safeSave('sltt_reviews', rev);
+      }
+    });
+
+    const unsubChat = subscribeChatThreads((t) => {
+      setChatThreads(t || []);
+      safeSave('sltt_chat_threads', t || []);
+    });
+
     const unsubSettings = subscribeSettings(
       (info) => {
         if (!isSavingResortInfoRef.current && info) {
-          setResortInfo((prev) => ({ ...INITIAL_RESORT_INFO, ...info }));
+          setResortInfo((prev) => ({ ...INITIAL_RESORT_INFO, ...prev, ...info }));
+          safeSave('sltt_resort_info', { ...INITIAL_RESORT_INFO, ...info });
         }
       },
       (payment) => {
         if (!isSavingPaymentSettingsRef.current && payment) {
-          setPaymentSettings((prev) => ({ ...INITIAL_PAYMENT_SETTINGS, ...payment }));
+          setPaymentSettings((prev) => ({ ...INITIAL_PAYMENT_SETTINGS, ...prev, ...payment }));
+          safeSave('sltt_payment_settings', { ...INITIAL_PAYMENT_SETTINGS, ...payment });
+        }
+      },
+      (templates) => {
+        if (templates) {
+          setNotificationTemplates((prev) => ({ ...DEFAULT_NOTIFICATION_TEMPLATES, ...prev, ...templates }));
+          safeSave('sltt_notification_templates', { ...DEFAULT_NOTIFICATION_TEMPLATES, ...templates });
         }
       }
     );
@@ -722,6 +586,9 @@ export const ResortProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       unsubRooms();
       unsubPackages();
       unsubAddOns();
+      unsubAmenities();
+      unsubGallery();
+      unsubReviews();
       unsubChat();
       unsubSettings();
     };
@@ -729,20 +596,21 @@ export const ResortProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const unreadChatCountOwner = chatThreads.reduce((acc, t) => acc + (t.unreadCountOwner || 0), 0);
 
+  // --- LIVE CHAT METHODS ---
   const createOrStartChatThread = (
     guestInfo: { name: string; email?: string; phone?: string; subject?: string },
     initialText?: string,
     imageUrl?: string
   ): string => {
     const now = new Date().toISOString();
-    let existing = chatThreads.find(
+    const existing = chatThreads.find(
       (t) =>
         (guestInfo.email && t.customerEmail?.toLowerCase() === guestInfo.email.toLowerCase()) ||
         (guestInfo.phone && t.customerPhone === guestInfo.phone) ||
         (currentCustomerThreadId && t.id === currentCustomerThreadId)
     );
 
-    let threadId = existing ? existing.id : `CHAT-${Math.floor(1000 + Math.random() * 9000)}`;
+    const threadId = existing ? existing.id : `CHAT-${Math.floor(1000 + Math.random() * 9000)}`;
 
     if (!existing) {
       const newMessages: ChatMessage[] = [];
@@ -919,7 +787,7 @@ export const ResortProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   };
 
-  // User Management Methods
+  // --- USER MANAGEMENT METHODS ---
   const authenticateAdminUser = (username: string, pass: string): AdminUser | null => {
     const cleanUsername = (username || '').trim().toLowerCase();
     const found = adminUsers.find(
@@ -1005,28 +873,41 @@ export const ResortProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const syncAllDataToFirebase = async (): Promise<boolean> => {
     showToast('Syncing all application data to Firebase Firestore Database...', 'info');
-    const success = await forceSyncAllToFirestore(
-      adminUsers,
-      rooms,
-      packages,
-      bookings,
-      resortInfo,
-      paymentSettings,
-      chatThreads,
-      addOns
-    );
-    if (success) {
+    try {
+      await forceSyncAllToFirestore(
+        adminUsers,
+        rooms,
+        packages,
+        addOns,
+        amenities,
+        gallery,
+        reviews,
+        resortInfo,
+        paymentSettings,
+        notificationTemplates
+      );
       showToast('All collections successfully synchronized to Firebase Firestore!', 'success');
-    } else {
+      return true;
+    } catch (err) {
+      console.error('Error during manual sync:', err);
       showToast('Failed to sync data to Firebase Cloud Database.', 'error');
+      return false;
     }
-    return success;
   };
 
-
-  const updateNotificationTemplates = (newTemplates: NotificationTemplates) => {
+  // --- NOTIFICATION TEMPLATES ---
+  const updateNotificationTemplates = async (newTemplates: NotificationTemplates) => {
     setNotificationTemplates(newTemplates);
-    showToast('Email notification templates saved successfully.', 'success');
+    safeSave('sltt_notification_templates', newTemplates);
+    try {
+      await saveNotificationTemplatesToFirestore(newTemplates);
+      showToast('Email notification templates saved successfully.', 'success');
+      return true;
+    } catch (err) {
+      console.error('Error saving notification templates to Firestore:', err);
+      showToast('Failed to save templates to cloud database.', 'error');
+      return false;
+    }
   };
 
   const sendNotification = (
@@ -1071,6 +952,7 @@ export const ResortProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     return logEntry;
   };
 
+  // --- SETTINGS CRUD ---
   const updateResortInfo = async (info: ResortInfo, customSuccessMsg?: string): Promise<boolean> => {
     isSavingResortInfoRef.current = true;
     setResortInfo(info);
@@ -1109,6 +991,7 @@ export const ResortProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   };
 
+  // --- BOOKING ACTIONS ---
   const addBooking = (newBooking: Booking) => {
     let finalBooking = newBooking;
 
@@ -1245,6 +1128,7 @@ export const ResortProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     showToast('Payment receipt uploaded successfully!', 'success');
   };
 
+  // --- ROOM ACTIONS ---
   const toggleRoomAvailability = async (roomId: string) => {
     const target = rooms.find((r) => r.id === roomId);
     if (target) {
@@ -1329,6 +1213,7 @@ export const ResortProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   };
 
+  // --- PACKAGE ACTIONS ---
   const addPackage = (newPkg: Package) => {
     savePackageToFirestore(newPkg);
     setPackages((prev) => [...prev, newPkg]);
@@ -1347,6 +1232,7 @@ export const ResortProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     showToast('Package removed.', 'info');
   };
 
+  // --- ADD-ON SERVICE ACTIONS ---
   const addAddOn = (newAddon: AddOnService) => {
     saveAddOnToFirestore(newAddon);
     setAddOns((prev) => [...prev, newAddon]);
@@ -1375,6 +1261,104 @@ export const ResortProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     showToast(`Add-on status set to ${!currentActive ? 'Active' : 'Inactive'}.`, 'info');
   };
 
+  // --- AMENITIES ACTIONS ---
+  const addAmenity = async (newAmenity: Amenity): Promise<void> => {
+    try {
+      await saveAmenityToFirestore(newAmenity);
+      setAmenities((prev) => [...prev, newAmenity]);
+      showToast(`Amenity "${newAmenity.name}" added.`, 'success');
+    } catch (err) {
+      console.error('Error saving amenity to Firestore:', err);
+      showToast('Failed to save amenity to database.', 'error');
+    }
+  };
+
+  const updateAmenity = async (updatedAmenity: Amenity): Promise<void> => {
+    try {
+      await saveAmenityToFirestore(updatedAmenity);
+      setAmenities((prev) => prev.map((a) => (a.id === updatedAmenity.id ? updatedAmenity : a)));
+      showToast(`Amenity "${updatedAmenity.name}" updated.`, 'success');
+    } catch (err) {
+      console.error('Error updating amenity in Firestore:', err);
+      showToast('Failed to update amenity in database.', 'error');
+    }
+  };
+
+  const deleteAmenity = async (amenityId: string): Promise<void> => {
+    try {
+      await deleteAmenityFromFirestore(amenityId);
+      setAmenities((prev) => prev.filter((a) => a.id !== amenityId));
+      showToast('Amenity removed.', 'info');
+    } catch (err) {
+      console.error('Error deleting amenity from Firestore:', err);
+      showToast('Failed to delete amenity.', 'error');
+    }
+  };
+
+  // --- GALLERY ACTIONS ---
+  const addGalleryItem = async (newItem: GalleryItem): Promise<void> => {
+    try {
+      await saveGalleryItemToFirestore(newItem);
+      setGallery((prev) => [...prev, newItem]);
+      showToast(`Gallery item added.`, 'success');
+    } catch (err) {
+      console.error('Error saving gallery item:', err);
+      showToast('Failed to save gallery item to cloud.', 'error');
+    }
+  };
+
+  const updateGalleryItem = async (updatedItem: GalleryItem): Promise<void> => {
+    try {
+      await saveGalleryItemToFirestore(updatedItem);
+      setGallery((prev) => prev.map((g) => (g.id === updatedItem.id ? updatedItem : g)));
+      showToast(`Gallery image updated.`, 'success');
+    } catch (err) {
+      console.error('Error updating gallery item:', err);
+      showToast('Failed to update gallery image.', 'error');
+    }
+  };
+
+  const deleteGalleryItem = async (itemId: string): Promise<void> => {
+    try {
+      await deleteGalleryItemFromFirestore(itemId);
+      setGallery((prev) => prev.filter((g) => g.id !== itemId));
+      showToast('Gallery item removed.', 'info');
+    } catch (err) {
+      console.error('Error deleting gallery item:', err);
+      showToast('Failed to remove gallery item.', 'error');
+    }
+  };
+
+  // --- REVIEWS ACTIONS ---
+  const addReview = async (newReview: Testimonial): Promise<void> => {
+    try {
+      await saveReviewToFirestore(newReview);
+      setReviews((prev) => [newReview, ...prev]);
+    } catch (err) {
+      console.error('Error saving review to Firestore:', err);
+    }
+  };
+
+  const updateReview = async (updatedReview: Testimonial): Promise<void> => {
+    try {
+      await saveReviewToFirestore(updatedReview);
+      setReviews((prev) => prev.map((r) => (r.id === updatedReview.id ? updatedReview : r)));
+    } catch (err) {
+      console.error('Error updating review in Firestore:', err);
+    }
+  };
+
+  const deleteReview = async (reviewId: string): Promise<void> => {
+    try {
+      await deleteReviewFromFirestore(reviewId);
+      setReviews((prev) => prev.filter((r) => r.id !== reviewId));
+      showToast('Review removed.', 'info');
+    } catch (err) {
+      console.error('Error deleting review from Firestore:', err);
+    }
+  };
+
+  // --- HELPER LOOKUP METHODS ---
   const getRoomById = (id: string) => rooms.find((r) => r.id === id);
 
   const getBookingByReference = (ref: string) =>
@@ -1399,10 +1383,19 @@ export const ResortProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         setPackages,
         amenities,
         setAmenities,
+        addAmenity,
+        updateAmenity,
+        deleteAmenity,
         gallery,
         setGallery,
+        addGalleryItem,
+        updateGalleryItem,
+        deleteGalleryItem,
         reviews,
         setReviews,
+        addReview,
+        updateReview,
+        deleteReview,
         bookings,
         theme,
         setTheme,

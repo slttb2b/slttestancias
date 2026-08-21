@@ -18,19 +18,28 @@ import {
 import { EditableText } from './common/EditableText';
 
 export const AmenitiesSection: React.FC = () => {
-  const { amenities, setAmenities, theme, resortInfo, updateResortInfo } = useResort();
+  const { amenities, updateAmenity, theme, resortInfo, updateResortInfo } = useResort();
   const isLight = theme === 'light';
 
   const handleUpdateAmenityName = (id: string, newName: string) => {
-    setAmenities((prev) => prev.map((a) => (a.id === id ? { ...a, name: newName } : a)));
+    const target = amenities.find((a) => a.id === id);
+    if (target) {
+      updateAmenity({ ...target, name: newName });
+    }
   };
 
   const handleUpdateAmenityDesc = (id: string, newDesc: string) => {
-    setAmenities((prev) => prev.map((a) => (a.id === id ? { ...a, description: newDesc } : a)));
+    const target = amenities.find((a) => a.id === id);
+    if (target) {
+      updateAmenity({ ...target, description: newDesc });
+    }
   };
 
   const handleUpdateAmenityTag = (id: string, newTag: string) => {
-    setAmenities((prev) => prev.map((a) => (a.id === id ? { ...a, tag: newTag } : a)));
+    const target = amenities.find((a) => a.id === id);
+    if (target) {
+      updateAmenity({ ...target, tag: newTag });
+    }
   };
 
   const iconMap: Record<string, React.ReactNode> = {

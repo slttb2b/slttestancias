@@ -6,7 +6,7 @@ import { EditableImage } from './common/EditableImage';
 import { resolveImageUrl } from '../utils/imageUtils';
 
 export const GallerySection: React.FC = () => {
-  const { gallery, setGallery, theme } = useResort();
+  const { gallery, updateGalleryItem, theme } = useResort();
   const isLight = theme === 'light';
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [activeLightboxIndex, setActiveLightboxIndex] = useState<number | null>(null);
@@ -18,15 +18,24 @@ export const GallerySection: React.FC = () => {
     : gallery.filter((item) => item.category === selectedCategory);
 
   const handleUpdateImage = (id: string, newUrl: string) => {
-    setGallery((prev) => prev.map((g) => (g.id === id ? { ...g, imageUrl: newUrl } : g)));
+    const target = gallery.find((g) => g.id === id);
+    if (target) {
+      updateGalleryItem({ ...target, imageUrl: newUrl });
+    }
   };
 
   const handleUpdateTitle = (id: string, newTitle: string) => {
-    setGallery((prev) => prev.map((g) => (g.id === id ? { ...g, title: newTitle } : g)));
+    const target = gallery.find((g) => g.id === id);
+    if (target) {
+      updateGalleryItem({ ...target, title: newTitle });
+    }
   };
 
   const handleUpdateCaption = (id: string, newCaption: string) => {
-    setGallery((prev) => prev.map((g) => (g.id === id ? { ...g, caption: newCaption } : g)));
+    const target = gallery.find((g) => g.id === id);
+    if (target) {
+      updateGalleryItem({ ...target, caption: newCaption });
+    }
   };
 
   const handlePrev = () => {

@@ -6,7 +6,7 @@ import { EditableText } from './common/EditableText';
 import { EditableImage } from './common/EditableImage';
 
 export const ReviewsSection: React.FC = () => {
-  const { reviews, setReviews, showToast, theme } = useResort();
+  const { reviews, addReview, updateReview, showToast, theme } = useResort();
   const isLight = theme === 'light';
   const [isModalOpen, setIsModalOpen] = useState(false);
 
@@ -17,15 +17,24 @@ export const ReviewsSection: React.FC = () => {
   const [comment, setComment] = useState('');
 
   const handleUpdateGuestName = (id: string, name: string) => {
-    setReviews((prev) => prev.map((r) => (r.id === id ? { ...r, guestName: name } : r)));
+    const target = reviews.find((r) => r.id === id);
+    if (target) {
+      updateReview({ ...target, guestName: name });
+    }
   };
 
   const handleUpdateComment = (id: string, text: string) => {
-    setReviews((prev) => prev.map((r) => (r.id === id ? { ...r, comment: text } : r)));
+    const target = reviews.find((r) => r.id === id);
+    if (target) {
+      updateReview({ ...target, comment: text });
+    }
   };
 
   const handleUpdateAvatar = (id: string, newUrl: string) => {
-    setReviews((prev) => prev.map((r) => (r.id === id ? { ...r, avatarUrl: newUrl } : r)));
+    const target = reviews.find((r) => r.id === id);
+    if (target) {
+      updateReview({ ...target, avatarUrl: newUrl });
+    }
   };
 
   const handleSubmitReview = (e: React.FormEvent) => {
@@ -43,7 +52,7 @@ export const ReviewsSection: React.FC = () => {
       avatarUrl: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=120&q=80',
     };
 
-    setReviews([newRev, ...reviews]);
+    addReview(newRev);
     setIsModalOpen(false);
     setGuestName('');
     setComment('');
