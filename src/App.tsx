@@ -126,6 +126,8 @@ function MainLayout() {
           onOpenMyBookings={() => setIsMyBookingsOpen(true)}
         />
         <Toast />
+        <RoomDetailModal />
+        <BookingWizardModal />
         <DocumentationModal isOpen={isDocsOpen} onClose={() => setIsDocsOpen(false)} />
         <MyBookingsModal isOpen={isMyBookingsOpen} onClose={() => setIsMyBookingsOpen(false)} />
         <PrivacyTermsModal type={privacyTermsType} onClose={() => setPrivacyTermsType(null)} />

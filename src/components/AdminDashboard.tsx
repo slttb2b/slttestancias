@@ -5,6 +5,8 @@ import { formatNotificationMessage } from '../data/resortData';
 import { downloadVoucher } from '../utils/voucher';
 import { uploadImageToFirebaseStorage } from '../services/storageService';
 import { resolveImageUrl } from '../utils/imageUtils';
+import { getTodayFormatted, getUnitOccupancyForDate } from '../utils/bookingUtils';
+import { AdminOccupancyBoard } from './AdminOccupancyBoard';
 import {
   ShieldCheck,
   Shield,
@@ -124,7 +126,7 @@ export const AdminDashboard: React.FC = () => {
   const [passwordInput, setPasswordInput] = useState('');
   const [loginError, setLoginError] = useState<string | null>(null);
 
-  const [adminTab, setAdminTab] = useState<'bookings' | 'chat' | 'rooms' | 'packages' | 'addons' | 'builder' | 'system' | 'payments' | 'notifications' | 'users'>('bookings');
+  const [adminTab, setAdminTab] = useState<'bookings' | 'occupancy' | 'chat' | 'rooms' | 'packages' | 'addons' | 'builder' | 'system' | 'payments' | 'notifications' | 'users'>('bookings');
 
   // USER MANAGEMENT & SUPER ADMIN STATE
   const [userSearchQuery, setUserSearchQuery] = useState('');
@@ -371,6 +373,12 @@ export const AdminDashboard: React.FC = () => {
   const totalRevenueEstimated = bookings.reduce((acc, b) => acc + (b.status !== 'Cancelled' ? b.totalAmount : 0), 0);
   const pendingRequestsCount = bookings.filter((b) => b.status === 'Pending').length;
   const confirmedCount = bookings.filter((b) => b.status === 'Confirmed').length;
+
+  // Real-time unit occupancy for today
+  const todayDateStr = getTodayFormatted();
+  const roomsOccupancyToday = rooms.map((r) => getUnitOccupancyForDate(r, todayDateStr, bookings));
+  const occupiedUnitsTodayCount = roomsOccupancyToday.filter((o) => o.isOccupied).length;
+  const vacantUnitsTodayCount = roomsOccupancyToday.filter((o) => o.status === 'vacant').length;
 
   // Filtered Bookings
   const filteredBookings = bookings.filter((b) => {
@@ -783,13 +791,35 @@ export const AdminDashboard: React.FC = () => {
             <p className="text-[11px] text-[#c3ccc0]">Ready for guest arrival</p>
           </div>
 
-          <div className="p-6 rounded-2xl bg-[#132016] border border-[#606e60] shadow-xl space-y-2">
+          <div
+            onClick={() => setAdminTab('occupancy')}
+            className={`p-6 rounded-2xl bg-[#132016] border transition-all cursor-pointer shadow-xl space-y-2 group ${
+              adminTab === 'occupancy'
+                ? 'border-emerald-500 ring-2 ring-emerald-500/30'
+                : 'border-[#606e60] hover:border-emerald-500/70'
+            }`}
+            title="Click to view live occupied and vacant units"
+          >
             <div className="flex items-center justify-between text-xs text-[#c3ccc0] font-semibold uppercase">
-              <span>Active Rooms</span>
-              <BedDouble className="w-4 h-4 text-[#ad9e92]" />
+              <span>Active Units & Occupancy</span>
+              <BedDouble className="w-4 h-4 text-[#ad9e92] group-hover:scale-110 transition-transform" />
             </div>
-            <p className="text-3xl font-bold font-serif text-[#ebe5de]">{rooms.length}</p>
-            <p className="text-[11px] text-[#ad9e92] font-medium">100% Operational</p>
+            <div className="flex items-baseline justify-between">
+              <p className="text-3xl font-bold font-serif text-[#ebe5de]">{rooms.length}</p>
+              <span className="text-[10px] font-bold text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-700/50">
+                Live Tracker →
+              </span>
+            </div>
+            <div className="flex items-center justify-between text-[11px] pt-1.5 border-t border-[#606e60]/40">
+              <span className="text-red-400 font-bold flex items-center gap-1">
+                <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                {occupiedUnitsTodayCount} Occupied
+              </span>
+              <span className="text-emerald-400 font-bold flex items-center gap-1">
+                <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                {vacantUnitsTodayCount} Vacant
+              </span>
+            </div>
           </div>
         </div>
 
@@ -1204,6 +1234,28 @@ export const AdminDashboard: React.FC = () => {
             </button>
           )}
 
+          {/* LIVE UNIT OCCUPANCY BOARD TAB */}
+          <button
+            onClick={() => setAdminTab('occupancy')}
+            className={`py-3 px-5 text-xs font-bold uppercase tracking-wider transition-all border-b-2 whitespace-nowrap cursor-pointer flex items-center gap-2 ${
+              adminTab === 'occupancy'
+                ? 'border-emerald-400 text-emerald-300 bg-emerald-950/30 rounded-t-xl'
+                : 'border-transparent text-[#c3ccc0] hover:text-[#ebe5de]'
+            }`}
+          >
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+            </span>
+            <Building2 className="w-4 h-4 text-emerald-400" />
+            <span>
+              Live Unit Occupancy
+              <span className="ml-1.5 px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-red-950 text-red-300 border border-red-800/60">
+                {occupiedUnitsTodayCount} Occupied
+              </span>
+            </span>
+          </button>
+
           {(!currentAdminUser || currentAdminUser.permissions.manageChat) && (
             <button
               onClick={() => setAdminTab('chat')}
@@ -1336,6 +1388,17 @@ export const AdminDashboard: React.FC = () => {
             </button>
           )}
         </div>
+
+        {/* LIVE UNIT OCCUPANCY BOARD TAB */}
+        {adminTab === 'occupancy' && (
+          <AdminOccupancyBoard
+            onGoToBookingsTab={() => setAdminTab('bookings')}
+            onViewBookingDetails={(booking) => {
+              setSearchQuery(booking.referenceNumber);
+              setAdminTab('bookings');
+            }}
+          />
+        )}
 
         {/* 1. BOOKINGS & RECEIPTS TAB */}
         {adminTab === 'bookings' && (

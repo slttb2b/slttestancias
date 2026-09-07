@@ -135,3 +135,89 @@ export const validateBookingDates = (
 
   return { isValid: true };
 };
+
+export interface UnitOccupancyDetail {
+  isOccupied: boolean;
+  isComingSoon?: boolean;
+  isBlockedByAdmin?: boolean;
+  status: 'occupied' | 'arriving_today' | 'vacant' | 'blocked' | 'coming_soon';
+  activeBooking?: Booking;
+  pendingBookings?: Booking[];
+  reason?: string;
+}
+
+/**
+ * Evaluates the occupancy state of a specific room/cottage/kubo on a specific target date (YYYY-MM-DD).
+ */
+export const getUnitOccupancyForDate = (
+  room: Room,
+  targetDate: string,
+  bookings: Booking[]
+): UnitOccupancyDetail => {
+  if (room.isComingSoon) {
+    return {
+      isOccupied: false,
+      isComingSoon: true,
+      status: 'coming_soon',
+      reason: room.comingSoonNotice || 'Unit is Coming Soon (Under Development)',
+    };
+  }
+
+  if (room.isAvailable === false) {
+    return {
+      isOccupied: false,
+      isBlockedByAdmin: true,
+      status: 'blocked',
+      reason: 'Temporarily blocked for housekeeping or maintenance',
+    };
+  }
+
+  if (room.blockedDates && room.blockedDates.includes(targetDate)) {
+    return {
+      isOccupied: true,
+      isBlockedByAdmin: true,
+      status: 'blocked',
+      reason: 'Scheduled maintenance / blocked on this date',
+    };
+  }
+
+  // Active bookings overlapping targetDate
+  const matchingBookings = bookings.filter((b) => {
+    const isThisRoom = b.roomId === room.id || b.allocatedRooms?.some((ar) => ar.id === room.id);
+    if (!isThisRoom) return false;
+    if (b.status === 'Cancelled' || b.status === 'Checked Out') return false;
+
+    if (b.checkInDate === b.checkOutDate) {
+      return targetDate === b.checkInDate;
+    }
+    return targetDate >= b.checkInDate && targetDate < b.checkOutDate;
+  });
+
+  const activeBooking = matchingBookings.find(
+    (b) => b.status === 'Confirmed' || b.status === 'Checked In'
+  );
+
+  const pendingBookings = matchingBookings.filter((b) => b.status === 'Pending');
+
+  if (activeBooking) {
+    const isArrivingToday = activeBooking.checkInDate === targetDate && activeBooking.status !== 'Checked In';
+    return {
+      isOccupied: true,
+      status: isArrivingToday ? 'arriving_today' : 'occupied',
+      activeBooking,
+      pendingBookings,
+      reason: isArrivingToday
+        ? `Arriving Today: ${activeBooking.guestName} (${activeBooking.referenceNumber})`
+        : `Occupied by: ${activeBooking.guestName} (${activeBooking.referenceNumber})`,
+    };
+  }
+
+  return {
+    isOccupied: false,
+    status: 'vacant',
+    pendingBookings: pendingBookings.length > 0 ? pendingBookings : undefined,
+    reason: pendingBookings.length > 0
+      ? `Vacant (${pendingBookings.length} pending request awaiting review)`
+      : 'Vacant - Clean and ready for check-in / walk-ins',
+  };
+};

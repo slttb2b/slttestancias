@@ -66,7 +66,45 @@ export const BookingWizardModal: React.FC = () => {
   );
   const [selectedPackage, setSelectedPackage] = useState<Package | null>(selectedPackageForBooking);
   const [additionalPackageRooms, setAdditionalPackageRooms] = useState<Room[]>([]);
-  const [modalCategoryFilter, setModalCategoryFilter] = useState<'All' | 'Cottages' | 'Filipino Kubos' | 'Rooms and Suites'>('All');
+  const [modalCategoryFilter, setModalCategoryFilter] = useState<'All' | 'Rooms and Suites' | 'Cottages' | 'Filipino Kubos' | 'Packages'>('All');
+
+  // Status helper for rooms in catalog
+  const getAccommodationStatus = (room: Room) => {
+    if (room.isComingSoon) {
+      return {
+        status: 'coming_soon' as const,
+        label: 'Coming Soon',
+        sublabel: room.comingSoonNotice || 'Opening Soon - Not Bookable Yet',
+        badgeBg: 'bg-amber-600/90 text-white border border-amber-400/50',
+        dotBg: 'bg-amber-300',
+        canBook: false,
+      };
+    }
+
+    const effectiveIn = checkInDate || getTodayFormatted();
+    const effectiveOut = checkOutDate || getTomorrowFormatted(effectiveIn);
+    const occ = checkRoomOccupied(room.id, effectiveIn, effectiveOut, rooms, bookings);
+
+    if (occ.isOccupied) {
+      return {
+        status: 'occupied' as const,
+        label: 'Occupied',
+        sublabel: occ.reason || 'Currently Reserved',
+        badgeBg: 'bg-red-600/90 text-white border border-red-400/50',
+        dotBg: 'bg-red-300',
+        canBook: true,
+      };
+    }
+
+    return {
+      status: 'available' as const,
+      label: 'Non-Occupied / Available',
+      sublabel: 'Available for Booking',
+      badgeBg: 'bg-emerald-600/90 text-white border border-emerald-400/50',
+      dotBg: 'bg-emerald-300',
+      canBook: true,
+    };
+  };
 
   // Guest Details
   const [guestName, setGuestName] = useState('');
@@ -239,10 +277,21 @@ export const BookingWizardModal: React.FC = () => {
 
   const handleNextStep = () => {
     if (step === 1) {
-      const dateValidation = validateBookingDates(checkInDate, checkOutDate);
-      if (!dateValidation.isValid) {
-        setOccupiedNotice(dateValidation.errorMessage || 'Invalid date range selected.');
-        return;
+      if (bookingCategory === 'package') {
+        if (!selectedPackage) {
+          setOccupiedNotice('Please select a resort package to proceed.');
+          return;
+        }
+      } else {
+        if (selectedRooms.length === 0) {
+          setOccupiedNotice('Please select an accommodation unit (room, cottage, or kubo) to proceed.');
+          return;
+        }
+        const hasComingSoon = selectedRooms.some((r) => r.isComingSoon);
+        if (hasComingSoon) {
+          setOccupiedNotice('The selected unit is Coming Soon and not yet accepting reservations. Please choose an available unit.');
+          return;
+        }
       }
       setOccupiedNotice(null);
       setStep(2);
@@ -250,24 +299,14 @@ export const BookingWizardModal: React.FC = () => {
       const dateValidation = validateBookingDates(checkInDate, checkOutDate);
       if (!dateValidation.isValid) {
         setOccupiedNotice(dateValidation.errorMessage || 'Invalid date range selected.');
-        setStep(1);
         return;
       }
 
-      if (bookingCategory === 'package') {
-        if (!selectedPackage) {
-          alert('Please select a resort package to proceed.');
-          return;
-        }
-      } else {
-        if (selectedRooms.length === 0) {
-          alert('Please select at least one accommodation unit to proceed.');
-          return;
-        }
+      if (bookingCategory === 'room') {
         for (const rm of selectedRooms) {
           const occ = checkRoomOccupied(rm.id, checkInDate, checkOutDate, rooms, bookings);
           if (occ.isOccupied) {
-            setOccupiedNotice(`Unit "${rm.name}" is occupied or unavailable for the selected dates. Please remove or replace it.`);
+            setOccupiedNotice(`Unit "${rm.name}" is occupied or unavailable for your selected dates (${checkInDate} to ${checkOutDate}). Please choose different dates or return to Step 1 to choose another unit.`);
             return;
           }
         }
@@ -275,24 +314,28 @@ export const BookingWizardModal: React.FC = () => {
 
       // CAPACITY ENFORCEMENT
       if (isCapacityExceeded) {
-        setOccupiedNotice(`Capacity limit exceeded: Your party has ${totalGuests} guests (${adults} Adults, ${children} Children), but your allocated accommodation(s) only have capacity for ${totalAllocatedCapacity} guests. Please add additional cottages, kubos, or rooms below to cover the remaining ${capacityShortage} guest(s).`);
+        setOccupiedNotice(`Capacity limit exceeded: Your party has ${totalGuests} guests (${adults} Adults, ${children} Children), but your allocated accommodation only accommodates ${totalAllocatedCapacity} guests. Please add additional cottages, kubos, or rooms below to cover the remaining ${capacityShortage} guest(s).`);
         return;
       }
 
       setOccupiedNotice(null);
       setStep(3);
     } else if (step === 3) {
+      setOccupiedNotice(null);
+      setStep(4);
+    } else if (step === 4) {
       if (!guestName || !mobile) {
-        alert('Please fill in your Full Name and Mobile Number.');
+        setOccupiedNotice('Please fill in your Full Name and Mobile Contact Number.');
         return;
       }
-      setStep(4);
+      setOccupiedNotice(null);
+      setStep(5);
     }
   };
 
   const handlePrevStep = () => {
     setOccupiedNotice(null);
-    if (step > 1 && step < 5) {
+    if (step > 1 && step < 6) {
       setStep(step - 1);
     }
   };
@@ -301,7 +344,7 @@ export const BookingWizardModal: React.FC = () => {
     const dateValidation = validateBookingDates(checkInDate, checkOutDate);
     if (!dateValidation.isValid) {
       setOccupiedNotice(dateValidation.errorMessage || 'Invalid date range selected.');
-      setStep(1);
+      setStep(2);
       return;
     }
 
@@ -377,7 +420,7 @@ export const BookingWizardModal: React.FC = () => {
 
     addBooking(newBooking);
     setCreatedBooking(newBooking);
-    setStep(5); // Confirmation Screen
+    setStep(6); // Confirmation Screen
   };
 
   const handleClose = () => {
@@ -406,7 +449,7 @@ export const BookingWizardModal: React.FC = () => {
             </div>
             <div>
               <h3 className="font-bold text-base font-serif text-[#ebe5de]">SLTT ESTANCIAS Booking</h3>
-              <p className="text-[11px] text-[#c3ccc0]">Step {step} of 5</p>
+              <p className="text-[11px] text-[#c3ccc0]">{step < 6 ? `Step ${step} of 5` : 'Booking Request Confirmed'}</p>
             </div>
           </div>
 
@@ -419,22 +462,26 @@ export const BookingWizardModal: React.FC = () => {
         </div>
 
         {/* Wizard Steps Indicator */}
-        {step < 5 && (
-          <div className="bg-[#132016] px-6 py-3 border-b border-[#606e60]/60 flex items-center justify-between text-xs text-[#c3ccc0]/80 overflow-x-auto">
-            <span className={`flex items-center gap-1 ${step >= 1 ? 'text-[#ad9e92] font-bold' : ''}`}>
-              1. Dates & Type
+        {step < 6 && (
+          <div className="bg-[#132016] px-4 sm:px-6 py-3 border-b border-[#606e60]/60 flex items-center justify-between text-xs text-[#c3ccc0]/80 overflow-x-auto gap-2">
+            <span className={`flex items-center gap-1 shrink-0 ${step >= 1 ? 'text-[#ad9e92] font-bold' : ''}`}>
+              1. Choose Unit/Package
             </span>
-            <span>→</span>
-            <span className={`flex items-center gap-1 ${step >= 2 ? 'text-[#ad9e92] font-bold' : ''}`}>
-              2. {bookingCategory === 'package' ? 'Package Selection' : 'Accommodation'} & Add-ons
+            <span className="shrink-0 text-[#606e60]">→</span>
+            <span className={`flex items-center gap-1 shrink-0 ${step >= 2 ? 'text-[#ad9e92] font-bold' : ''}`}>
+              2. Dates & Guests
             </span>
-            <span>→</span>
-            <span className={`flex items-center gap-1 ${step >= 3 ? 'text-[#ad9e92] font-bold' : ''}`}>
-              3. Guest Details
+            <span className="shrink-0 text-[#606e60]">→</span>
+            <span className={`flex items-center gap-1 shrink-0 ${step >= 3 ? 'text-[#ad9e92] font-bold' : ''}`}>
+              3. Add-Ons
             </span>
-            <span>→</span>
-            <span className={`flex items-center gap-1 ${step >= 4 ? 'text-[#ad9e92] font-bold' : ''}`}>
-              4. Payment & Summary
+            <span className="shrink-0 text-[#606e60]">→</span>
+            <span className={`flex items-center gap-1 shrink-0 ${step >= 4 ? 'text-[#ad9e92] font-bold' : ''}`}>
+              4. Guest Info
+            </span>
+            <span className="shrink-0 text-[#606e60]">→</span>
+            <span className={`flex items-center gap-1 shrink-0 ${step >= 5 ? 'text-[#ad9e92] font-bold' : ''}`}>
+              5. Payment
             </span>
           </div>
         )}
@@ -461,183 +508,529 @@ export const BookingWizardModal: React.FC = () => {
           </div>
         )}
 
-        {/* Step 1: Select Dates & Booking Category */}
+        {/* Step 1: Select Accommodation or Package (Catalog View) */}
         {step === 1 && (
-          <div className="p-6 sm:p-8 space-y-6">
-            <h4 className="text-xl font-bold font-serif text-[#ebe5de] flex items-center gap-2">
-              <Calendar className="w-5 h-5 text-[#ad9e92]" />
-              Step 1: Booking Category & Dates
-            </h4>
+          <div className="p-6 sm:p-8 space-y-6 max-h-[75vh] overflow-y-auto">
+            {/* Header info */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#606e60]/60 pb-4">
+              <div>
+                <h4 className="text-xl font-bold font-serif text-[#ebe5de] flex items-center gap-2">
+                  <BedDouble className="w-5 h-5 text-[#ad9e92]" />
+                  Step 1: Choose Your Accommodation or Package
+                </h4>
+                <p className="text-xs text-[#c3ccc0] mt-1">
+                  Explore our rooms, cottages, Filipino kubos, and packages. Select your choice to proceed to dates and guest setup.
+                </p>
+              </div>
 
-            {/* Category Switcher Tabs */}
+              {/* Status Legend */}
+              <div className="flex flex-wrap items-center gap-2 text-[10px] font-semibold">
+                <span className="flex items-center gap-1.5 bg-emerald-950/80 text-emerald-300 px-2.5 py-1 rounded-full border border-emerald-500/50">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                  Non-Occupied / Available
+                </span>
+                <span className="flex items-center gap-1.5 bg-rose-950/80 text-rose-300 px-2.5 py-1 rounded-full border border-rose-500/50">
+                  <span className="w-2 h-2 rounded-full bg-rose-400"></span>
+                  Occupied
+                </span>
+                <span className="flex items-center gap-1.5 bg-amber-950/80 text-amber-300 px-2.5 py-1 rounded-full border border-amber-500/50">
+                  <span className="w-2 h-2 rounded-full bg-amber-400"></span>
+                  Coming Soon
+                </span>
+              </div>
+            </div>
+
+            {/* Category Filter Tabs */}
             <div className="space-y-2">
               <label className="text-xs font-semibold text-[#c3ccc0] uppercase tracking-wider block">
-                Select What You Want To Book
+                Catalog Categories
               </label>
-              <div className="bg-[#1c2a20] p-1.5 rounded-2xl border border-[#606e60]/80 flex flex-col sm:flex-row gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setBookingCategory('room');
-                    setSelectedPackage(null);
-                    setAdditionalPackageRooms([]);
-                    if (selectedRooms.length === 0 && rooms.length > 0) setSelectedRooms([rooms[0]]);
-                    setOccupiedNotice(null);
-                  }}
-                  className={`flex-1 py-3 px-3 rounded-xl font-extrabold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all cursor-pointer ${
-                    bookingCategory === 'room'
-                      ? 'bg-[#ad9e92] text-[#1c2a20] shadow-md ring-1 ring-[#c3ccc0]'
-                      : 'text-[#c3ccc0] hover:text-[#ebe5de] hover:bg-[#132016]'
-                  }`}
-                >
-                  <BedDouble className="w-4 h-4" />
-                  <span>Standard Accommodation</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setBookingCategory('package');
-                    if (!selectedPackage && packages.length > 0) setSelectedPackage(packages[0]);
-                    setOccupiedNotice(null);
-                  }}
-                  className={`flex-1 py-3 px-3 rounded-xl font-extrabold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all cursor-pointer ${
-                    bookingCategory === 'package'
-                      ? 'bg-amber-600 text-white shadow-md ring-1 ring-amber-300'
-                      : 'text-[#c3ccc0] hover:text-[#ebe5de] hover:bg-[#132016]'
-                  }`}
-                >
-                  <Gift className="w-4 h-4 text-amber-200" />
-                  <span>Resort Experience Packages</span>
-                </button>
+              <div className="flex flex-wrap gap-2">
+                {[
+                  { id: 'All', label: 'All Catalog' },
+                  { id: 'Rooms and Suites', label: 'Rooms & Suites' },
+                  { id: 'Cottages', label: 'Cottages' },
+                  { id: 'Filipino Kubos', label: 'Filipino Kubos' },
+                  { id: 'Packages', label: 'Resort Packages' },
+                ].map((tab) => {
+                  const isActive = modalCategoryFilter === tab.id;
+                  return (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => setModalCategoryFilter(tab.id as any)}
+                      className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                        isActive
+                          ? 'bg-[#ad9e92] text-[#1c2a20] shadow-md ring-1 ring-[#c3ccc0]'
+                          : 'bg-[#1c2a20] text-[#c3ccc0] hover:text-[#ebe5de] border border-[#606e60]/60 hover:bg-[#25362a]'
+                      }`}
+                    >
+                      {tab.id === 'Packages' ? <Gift className="w-3.5 h-3.5" /> : <BedDouble className="w-3.5 h-3.5" />}
+                      <span>{tab.label}</span>
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="text-xs font-semibold text-[#c3ccc0] block mb-1">Check-In Date</label>
-                <input
-                  type="date"
-                  value={checkInDate}
-                  min={getTodayFormatted()}
-                  onChange={(e) => handleCheckInChange(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-[#1c2a20] border border-[#606e60]/60 text-sm focus:outline-none focus:border-[#c3ccc0] text-[#ebe5de]"
-                />
-              </div>
+            {/* Units Grid */}
+            <div className="space-y-4">
+              {/* 1. ROOMS / COTTAGES / KUBOS */}
+              {modalCategoryFilter !== 'Packages' && (
+                <div className="grid grid-cols-1 gap-3.5">
+                  {rooms
+                    .filter((r) => modalCategoryFilter === 'All' || r.category === modalCategoryFilter)
+                    .map((r) => {
+                      const statusInfo = getAccommodationStatus(r);
+                      const isSelected = bookingCategory === 'room' && selectedRooms.some((selected) => selected.id === r.id);
 
-              <div>
-                <label className="text-xs font-semibold text-[#c3ccc0] block mb-1">Check-Out Date</label>
-                <input
-                  type="date"
-                  value={checkOutDate}
-                  min={getTomorrowFormatted(checkInDate)}
-                  onChange={(e) => handleCheckOutChange(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-[#1c2a20] border border-[#606e60]/60 text-sm focus:outline-none focus:border-[#c3ccc0] text-[#ebe5de]"
-                />
-              </div>
+                      return (
+                        <div
+                          key={r.id}
+                          onClick={() => {
+                            if (r.isComingSoon) {
+                              setOccupiedNotice(`"${r.name}" is coming soon and not yet open for booking. Please select an available unit.`);
+                              return;
+                            }
+                            setBookingCategory('room');
+                            setSelectedRooms([r]);
+                            setSelectedPackage(null);
+                            setAdditionalPackageRooms([]);
+                            setOccupiedNotice(null);
+                          }}
+                          className={`p-4 rounded-2xl border transition-all cursor-pointer flex flex-col sm:flex-row gap-4 ${
+                            isSelected
+                              ? 'bg-[#1c2a20] border-[#ad9e92] text-[#ebe5de] shadow-xl ring-2 ring-[#ad9e92]/50'
+                              : 'bg-[#132016] border-[#606e60]/60 text-[#c3ccc0] hover:bg-[#1c2a20]'
+                          }`}
+                        >
+                          {/* Image & Status Badge */}
+                          <div className="sm:w-44 h-36 shrink-0 rounded-xl overflow-hidden relative border border-[#606e60]/40">
+                            <img
+                              src={r.featuredImage}
+                              alt={r.name}
+                              className="w-full h-full object-cover transition-transform duration-300 hover:scale-105"
+                              referrerPolicy="no-referrer"
+                            />
+                            {/* Status Badge */}
+                            <div className="absolute top-2 left-2 flex flex-col gap-1">
+                              <span className={`text-[10px] font-extrabold px-2.5 py-1 rounded-full shadow-md flex items-center gap-1.5 ${statusInfo.badgeBg}`}>
+                                <span className={`w-1.5 h-1.5 rounded-full ${statusInfo.dotBg}`}></span>
+                                {statusInfo.label}
+                              </span>
+                            </div>
+
+                            {/* Category pill */}
+                            <span className="absolute bottom-2 left-2 text-[9px] font-bold bg-[#132016]/90 text-[#c3ccc0] px-2 py-0.5 rounded backdrop-blur-sm border border-[#606e60]/40">
+                              {r.category}
+                            </span>
+                          </div>
+
+                          {/* Content */}
+                          <div className="flex-1 flex flex-col justify-between space-y-2">
+                            <div>
+                              <div className="flex items-start justify-between gap-2">
+                                <div>
+                                  <h5 className="font-bold text-base text-[#ebe5de] font-serif flex items-center gap-2">
+                                    {r.name}
+                                    {isSelected && (
+                                      <span className="text-[10px] bg-[#ad9e92] text-[#1c2a20] font-extrabold px-2 py-0.5 rounded-full flex items-center gap-1">
+                                        <Check className="w-3 h-3 text-[#1c2a20]" /> Selected
+                                      </span>
+                                    )}
+                                  </h5>
+                                  <p className="text-xs text-[#c3ccc0] mt-0.5">{r.tagline || r.shortDescription}</p>
+                                </div>
+
+                                {/* Price */}
+                                <div className="text-right shrink-0">
+                                  <span className="font-bold text-[#ad9e92] text-lg font-serif">₱{r.pricePerNight.toLocaleString()}</span>
+                                  <span className="text-[10px] text-[#c3ccc0] block">{r.category === 'Cottages' ? '/ day' : '/ night'}</span>
+                                </div>
+                              </div>
+
+                              {/* Specs */}
+                              <div className="flex flex-wrap items-center gap-2 text-[11px] text-[#ad9e92] mt-2">
+                                <span className="px-2 py-0.5 rounded bg-[#1c2a20] border border-[#606e60]/60 font-medium">
+                                  {r.bedType}
+                                </span>
+                                <span className="px-2 py-0.5 rounded bg-[#1c2a20] border border-[#606e60]/60 font-medium flex items-center gap-1">
+                                  <Users className="w-3 h-3" /> Max {r.maxGuests} Guests
+                                </span>
+                                {r.sizeSqM && (
+                                  <span className="px-2 py-0.5 rounded bg-[#1c2a20] border border-[#606e60]/60">
+                                    {r.sizeSqM} m²
+                                  </span>
+                                )}
+                              </div>
+
+                              {/* Amenities preview */}
+                              <div className="flex flex-wrap gap-1.5 pt-2">
+                                {r.amenities.slice(0, 4).map((am, idx) => (
+                                  <span key={idx} className="text-[10px] bg-[#132016] text-[#c3ccc0] px-2 py-0.5 rounded border border-[#606e60]/40">
+                                    ✓ {am}
+                                  </span>
+                                ))}
+                                {r.amenities.length > 4 && (
+                                  <span className="text-[10px] text-[#ad9e92] px-1 py-0.5 font-semibold">
+                                    +{r.amenities.length - 4} more
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Notice and Selection Button */}
+                            <div className="flex items-center justify-between pt-2 border-t border-[#606e60]/40">
+                              <span className="text-[11px]">
+                                {r.isComingSoon ? (
+                                  <span className="text-amber-300 font-semibold">{r.comingSoonNotice || 'Opening soon - bookings not open'}</span>
+                                ) : statusInfo.status === 'occupied' ? (
+                                  <span className="text-rose-300 font-semibold">{statusInfo.sublabel}</span>
+                                ) : (
+                                  <span className="text-emerald-300 font-semibold">Ready for booking</span>
+                                )}
+                              </span>
+
+                              <div>
+                                {r.isComingSoon ? (
+                                  <button
+                                    type="button"
+                                    disabled
+                                    className="px-3.5 py-1.5 rounded-lg bg-amber-950/60 border border-amber-800/40 text-amber-300 text-xs font-bold opacity-75 cursor-not-allowed"
+                                  >
+                                    Coming Soon
+                                  </button>
+                                ) : isSelected ? (
+                                  <span className="px-3.5 py-1.5 rounded-lg bg-[#ad9e92] text-[#1c2a20] text-xs font-extrabold uppercase tracking-wider flex items-center gap-1 shadow-sm">
+                                    <Check className="w-3.5 h-3.5" /> Selected
+                                  </span>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setBookingCategory('room');
+                                      setSelectedRooms([r]);
+                                      setSelectedPackage(null);
+                                      setAdditionalPackageRooms([]);
+                                      setOccupiedNotice(null);
+                                    }}
+                                    className="px-3.5 py-1.5 rounded-lg bg-[#2d4536] hover:bg-[#3b5946] text-[#ebe5de] border border-[#606e60] text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer"
+                                  >
+                                    Select Unit
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                </div>
+              )}
+
+              {/* 2. PACKAGES */}
+              {(modalCategoryFilter === 'All' || modalCategoryFilter === 'Packages') && (
+                <div className="space-y-3.5 pt-2">
+                  {modalCategoryFilter === 'All' && (
+                    <div className="flex items-center justify-between pt-2 border-t border-[#606e60]/60">
+                      <label className="text-xs font-semibold text-[#c3ccc0] uppercase tracking-wider flex items-center gap-1.5">
+                        <Gift className="w-4 h-4 text-amber-300" />
+                        Resort Experience Packages ({packages.length} Available)
+                      </label>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-1 gap-3.5">
+                    {packages.map((pkg) => {
+                      const isSelected = bookingCategory === 'package' && selectedPackage?.id === pkg.id;
+                      const pkgCapacity = getPackageBaseCapacity(pkg);
+
+                      return (
+                        <div
+                          key={pkg.id}
+                          onClick={() => {
+                            setBookingCategory('package');
+                            setSelectedPackage(pkg);
+                            setSelectedRooms([]);
+                            setAdditionalPackageRooms([]);
+                            setOccupiedNotice(null);
+                          }}
+                          className={`p-4 rounded-2xl border transition-all cursor-pointer flex flex-col sm:flex-row gap-4 ${
+                            isSelected
+                              ? 'bg-[#1c2a20] border-amber-500 text-[#ebe5de] shadow-xl ring-2 ring-amber-500/40'
+                              : 'bg-[#132016] border-[#606e60]/60 text-[#c3ccc0] hover:bg-[#1c2a20]'
+                          }`}
+                        >
+                          {/* Image & Status Badge */}
+                          <div className="sm:w-44 h-36 shrink-0 rounded-xl overflow-hidden relative border border-[#606e60]/40">
+                            <img
+                              src={pkg.featuredImage}
+                              alt={pkg.name}
+                              className="w-full h-full object-cover transition-transform duration-300 hover:scale-105"
+                              referrerPolicy="no-referrer"
+                            />
+                            <div className="absolute top-2 left-2 flex flex-col gap-1">
+                              <span className="text-[10px] font-extrabold px-2.5 py-1 rounded-full shadow-md flex items-center gap-1.5 bg-emerald-600/90 text-white border border-emerald-400/50">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-300"></span>
+                                Non-Occupied / Available
+                              </span>
+                              {pkg.isPopular && (
+                                <span className="bg-amber-600 text-white text-[9px] font-extrabold px-2 py-0.5 rounded uppercase tracking-wider shadow-md flex items-center gap-1">
+                                  <Sparkles className="w-2.5 h-2.5 text-amber-200" /> Popular
+                                </span>
+                              )}
+                            </div>
+
+                            <span className="absolute bottom-2 left-2 text-[9px] font-bold bg-[#132016]/90 text-[#c3ccc0] px-2 py-0.5 rounded backdrop-blur-sm border border-[#606e60]/40">
+                              Package
+                            </span>
+                          </div>
+
+                          {/* Content */}
+                          <div className="flex-1 flex flex-col justify-between space-y-2">
+                            <div>
+                              <div className="flex items-start justify-between gap-2">
+                                <div>
+                                  <h5 className="font-bold text-base text-[#ebe5de] font-serif flex items-center gap-2">
+                                    {pkg.name}
+                                    {isSelected && (
+                                      <span className="text-[10px] bg-amber-600 text-white font-extrabold px-2 py-0.5 rounded-full flex items-center gap-1">
+                                        <Check className="w-3 h-3 text-white" /> Selected
+                                      </span>
+                                    )}
+                                  </h5>
+                                  <span className="text-[11px] text-[#ad9e92] font-semibold">
+                                    {pkg.duration} • {pkg.tagline || `Base: ${pkg.recommendedGuests}`} (Max ~{pkgCapacity} guests)
+                                  </span>
+                                </div>
+
+                                <div className="text-right shrink-0">
+                                  <span className="font-bold text-amber-300 text-xl font-serif">₱{pkg.price.toLocaleString()}</span>
+                                  <span className="text-[10px] text-[#c3ccc0] block">package rate</span>
+                                </div>
+                              </div>
+
+                              <p className="text-xs text-[#c3ccc0] mt-1">{pkg.description}</p>
+
+                              {/* Inclusions summary */}
+                              <div className="pt-2 border-t border-[#606e60]/40 mt-2">
+                                <span className="text-[10px] font-bold text-amber-200 uppercase tracking-wider block mb-1">
+                                  Package Inclusions:
+                                </span>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-1 text-[11px] text-[#c3ccc0]">
+                                  {pkg.inclusions.slice(0, 4).map((inc, i) => (
+                                    <div key={i} className="flex items-center gap-1.5">
+                                      <Check className="w-3 h-3 text-amber-400 shrink-0" />
+                                      <span className="truncate">{inc}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center justify-between pt-2 border-t border-[#606e60]/40">
+                              <span className="text-[11px] text-emerald-300 font-semibold">
+                                Ready for instant booking
+                              </span>
+
+                              <div>
+                                {isSelected ? (
+                                  <span className="px-3.5 py-1.5 rounded-lg bg-amber-600 text-white text-xs font-extrabold uppercase tracking-wider flex items-center gap-1 shadow-sm">
+                                    <Check className="w-3.5 h-3.5" /> Selected
+                                  </span>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setBookingCategory('package');
+                                      setSelectedPackage(pkg);
+                                      setSelectedRooms([]);
+                                      setAdditionalPackageRooms([]);
+                                      setOccupiedNotice(null);
+                                    }}
+                                    className="px-3.5 py-1.5 rounded-lg bg-[#2d4536] hover:bg-[#3b5946] text-[#ebe5de] border border-[#606e60] text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer"
+                                  >
+                                    Select Package
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
 
-            <div className="p-4 rounded-xl bg-[#1c2a20] border border-[#606e60] flex items-center justify-between text-xs text-[#c3ccc0]">
-              <span>Total Duration:</span>
-              <span className="text-[#ad9e92] font-bold text-sm font-serif">{nights} {nights === 1 ? 'Night' : 'Nights'}</span>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="text-xs font-semibold text-[#c3ccc0] block mb-1">
-                  Adult Guests {adults >= 10 && <span className="text-amber-400 font-bold text-[10px]">(Large Group)</span>}
-                </label>
-                <select
-                  value={adults}
-                  onChange={(e) => setAdults(parseInt(e.target.value) || 1)}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-[#1c2a20] border border-[#606e60]/60 text-sm focus:outline-none focus:border-[#c3ccc0] text-[#ebe5de]"
-                >
-                  {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 18, 20, 22, 25, 30].map((num) => (
-                    <option key={num} value={num}>{num} {num === 1 ? 'Adult' : 'Adults'}{num >= 15 ? ' (Large Group Pavilion)' : num >= 8 ? ' (Family/Group)' : ''}</option>
-                  ))}
-                </select>
+            {/* Selection Summary & Continue CTA */}
+            <div className="sticky bottom-0 bg-[#132016]/95 backdrop-blur-md p-4 rounded-2xl border-2 border-[#ad9e92]/70 shadow-2xl flex flex-col sm:flex-row items-center justify-between gap-3">
+              <div className="text-left w-full sm:w-auto">
+                <span className="text-[10px] uppercase font-bold text-[#ad9e92] tracking-wider block">
+                  Current Selection:
+                </span>
+                <p className="font-bold text-sm text-[#ebe5de] font-serif">
+                  {bookingCategory === 'package' && selectedPackage ? (
+                    <span>[Package] {selectedPackage.name} (₱{selectedPackage.price.toLocaleString()})</span>
+                  ) : selectedRooms.length > 0 ? (
+                    <span>{selectedRooms[0].name} ({selectedRooms[0].category}) • ₱{selectedRooms[0].pricePerNight.toLocaleString()}{selectedRooms[0].category === 'Cottages' ? '/day' : '/night'}</span>
+                  ) : (
+                    <span className="text-[#c3ccc0] font-normal italic">Please select an accommodation or package above</span>
+                  )}
+                </p>
               </div>
 
-              <div>
-                <label className="text-xs font-semibold text-[#c3ccc0] block mb-1">Child Guests</label>
-                <select
-                  value={children}
-                  onChange={(e) => setChildren(parseInt(e.target.value) || 0)}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-[#1c2a20] border border-[#606e60]/60 text-sm focus:outline-none focus:border-[#c3ccc0] text-[#ebe5de]"
-                >
-                  {[0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 12, 15].map((num) => (
-                    <option key={num} value={num}>{num} {num === 1 ? 'Child' : 'Children'}</option>
-                  ))}
-                </select>
-              </div>
+              <button
+                type="button"
+                onClick={handleNextStep}
+                className="w-full sm:w-auto px-6 py-3 rounded-xl bg-[#ad9e92] hover:bg-[#c3ccc0] text-[#1c2a20] font-extrabold text-xs uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer shadow-lg transition-colors shrink-0"
+              >
+                <span>CONTINUE TO DATES & GUESTS</span>
+                <ArrowRight className="w-4 h-4 text-[#1c2a20]" />
+              </button>
             </div>
-
-            {/* Total Guest Count Summary */}
-            <div className="px-3.5 py-2 rounded-xl bg-[#132016] border border-[#606e60]/40 flex items-center justify-between text-xs text-[#c3ccc0]">
-              <span className="flex items-center gap-1.5 font-medium">
-                <Users className="w-3.5 h-3.5 text-[#ad9e92]" /> Total Party Size:
-              </span>
-              <span className="font-bold text-[#ad9e92] text-sm font-serif">
-                {adults + children} {adults + children === 1 ? 'Guest' : 'Guests'} ({adults} {adults === 1 ? 'Adult' : 'Adults'}{children > 0 ? `, ${children} ${children === 1 ? 'Child' : 'Kids'}` : ''})
-              </span>
-            </div>
-
-            <button
-              onClick={handleNextStep}
-              className="w-full py-3.5 rounded-xl bg-[#ad9e92] hover:bg-[#c3ccc0] text-[#1c2a20] font-extrabold text-xs uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer shadow-lg mt-4 transition-colors"
-            >
-              <span>CONTINUE TO {bookingCategory === 'package' ? 'PACKAGE SELECTION' : 'ROOM SELECTION'}</span>
-              <ArrowRight className="w-4 h-4 text-[#1c2a20]" />
-            </button>
           </div>
         )}
 
-        {/* Step 2: Choose Room/Package & Add-Ons */}
+        {/* Step 2: Schedule Dates & Guest Count */}
         {step === 2 && (
           <div className="p-6 sm:p-8 space-y-6 max-h-[75vh] overflow-y-auto">
-            <div className="flex items-center justify-between">
-              <h4 className="text-xl font-bold font-serif text-[#ebe5de] flex items-center gap-2">
-                {bookingCategory === 'package' ? (
-                  <>
-                    <Gift className="w-5 h-5 text-amber-300" />
-                    Step 2: Choose Resort Package & Accommodations
-                  </>
-                ) : (
-                  <>
-                    <BedDouble className="w-5 h-5 text-[#ad9e92]" />
-                    Step 2: Allocate Accommodations ({selectedRooms.length} {selectedRooms.length === 1 ? 'Unit' : 'Units'})
-                  </>
-                )}
-              </h4>
+            {/* Header info */}
+            <div className="flex items-center justify-between border-b border-[#606e60]/60 pb-4">
+              <div>
+                <h4 className="text-xl font-bold font-serif text-[#ebe5de] flex items-center gap-2">
+                  <Calendar className="w-5 h-5 text-[#ad9e92]" />
+                  Step 2: Set Stay Dates & Party Size
+                </h4>
+                <p className="text-xs text-[#c3ccc0] mt-1">
+                  Specify your arrival date, departure date, and guest count.
+                </p>
+              </div>
 
-              {/* Mode Switcher pill */}
-              <div className="flex bg-[#132016] p-1 rounded-xl border border-[#606e60]/60 text-[11px]">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setBookingCategory('room');
-                    setSelectedPackage(null);
-                    setAdditionalPackageRooms([]);
-                    if (selectedRooms.length === 0 && rooms.length > 0) setSelectedRooms([rooms[0]]);
-                  }}
-                  className={`px-2.5 py-1 rounded-lg font-bold transition-all cursor-pointer ${
-                    bookingCategory === 'room' ? 'bg-[#ad9e92] text-[#1c2a20]' : 'text-[#c3ccc0]'
-                  }`}
-                >
-                  Rooms & Cottages
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setBookingCategory('package');
-                    if (!selectedPackage && packages.length > 0) setSelectedPackage(packages[0]);
-                  }}
-                  className={`px-2.5 py-1 rounded-lg font-bold transition-all cursor-pointer ${
-                    bookingCategory === 'package' ? 'bg-amber-600 text-white' : 'text-[#c3ccc0]'
-                  }`}
-                >
-                  Packages
-                </button>
+              <button
+                type="button"
+                onClick={() => setStep(1)}
+                className="px-3 py-1.5 rounded-xl bg-[#1c2a20] border border-[#606e60] text-[#ad9e92] hover:text-[#ebe5de] text-xs font-bold transition-colors cursor-pointer shrink-0"
+              >
+                ← Change Selection
+              </button>
+            </div>
+
+            {/* Selected Unit / Package Highlight Card */}
+            <div className="p-4 rounded-2xl bg-[#1c2a20] border border-[#ad9e92]/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-md">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-[#132016] border border-[#606e60] flex items-center justify-center text-[#ad9e92] shrink-0">
+                  {bookingCategory === 'package' ? <Gift className="w-5 h-5 text-amber-300" /> : <BedDouble className="w-5 h-5 text-[#ad9e92]" />}
+                </div>
+                <div>
+                  <span className="text-[10px] uppercase font-bold text-[#ad9e92] tracking-wider block">
+                    {bookingCategory === 'package' ? 'Selected Package' : 'Selected Primary Unit'}
+                  </span>
+                  <h5 className="font-bold text-sm text-[#ebe5de] font-serif">
+                    {bookingCategory === 'package'
+                      ? selectedPackage?.name
+                      : selectedRooms.map((r) => r.name).join(' + ')}
+                  </h5>
+                  <p className="text-[11px] text-[#c3ccc0]">
+                    {bookingCategory === 'package'
+                      ? `${selectedPackage?.duration} • Rate: ₱${selectedPackage?.price.toLocaleString()}`
+                      : `Rate: ₱${roomRatePerNight.toLocaleString()}/night • Base Capacity: ${selectedRooms.reduce((acc, r) => acc + r.maxGuests, 0)} guests`}
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setStep(1)}
+                className="text-xs text-[#ad9e92] hover:text-[#ebe5de] underline font-medium self-start sm:self-center cursor-pointer"
+              >
+                Browse other options
+              </button>
+            </div>
+
+            {/* Date Pickers */}
+            <div className="space-y-3">
+              <label className="text-xs font-semibold text-[#c3ccc0] uppercase tracking-wider block">
+                Stay Schedule
+              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="text-xs font-semibold text-[#c3ccc0] block mb-1">Check-In Date</label>
+                  <input
+                    type="date"
+                    value={checkInDate}
+                    min={getTodayFormatted()}
+                    onChange={(e) => handleCheckInChange(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-[#1c2a20] border border-[#606e60]/60 text-sm focus:outline-none focus:border-[#c3ccc0] text-[#ebe5de]"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold text-[#c3ccc0] block mb-1">Check-Out Date</label>
+                  <input
+                    type="date"
+                    value={checkOutDate}
+                    min={getTomorrowFormatted(checkInDate)}
+                    onChange={(e) => handleCheckOutChange(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-[#1c2a20] border border-[#606e60]/60 text-sm focus:outline-none focus:border-[#c3ccc0] text-[#ebe5de]"
+                  />
+                </div>
+              </div>
+
+              <div className="p-3.5 rounded-xl bg-[#132016] border border-[#606e60]/60 flex items-center justify-between text-xs text-[#c3ccc0]">
+                <span>Total Calculated Duration:</span>
+                <span className="text-[#ad9e92] font-bold text-sm font-serif">{nights} {nights === 1 ? 'Night' : 'Nights'}</span>
+              </div>
+            </div>
+
+            {/* Guest Count Pickers */}
+            <div className="space-y-3">
+              <label className="text-xs font-semibold text-[#c3ccc0] uppercase tracking-wider block">
+                Guest Party Size
+              </label>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-xs font-semibold text-[#c3ccc0] block mb-1">
+                    Adult Guests {adults >= 10 && <span className="text-amber-400 font-bold text-[10px]">(Large Group)</span>}
+                  </label>
+                  <select
+                    value={adults}
+                    onChange={(e) => setAdults(parseInt(e.target.value) || 1)}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-[#1c2a20] border border-[#606e60]/60 text-sm focus:outline-none focus:border-[#c3ccc0] text-[#ebe5de]"
+                  >
+                    {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 18, 20, 22, 25, 30].map((num) => (
+                      <option key={num} value={num}>
+                        {num} {num === 1 ? 'Adult' : 'Adults'}{num >= 15 ? ' (Large Group Pavilion)' : num >= 8 ? ' (Family/Group)' : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold text-[#c3ccc0] block mb-1">Child Guests</label>
+                  <select
+                    value={children}
+                    onChange={(e) => setChildren(parseInt(e.target.value) || 0)}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-[#1c2a20] border border-[#606e60]/60 text-sm focus:outline-none focus:border-[#c3ccc0] text-[#ebe5de]"
+                  >
+                    {[0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 12, 15].map((num) => (
+                      <option key={num} value={num}>{num} {num === 1 ? 'Child' : 'Children'}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Total Summary */}
+              <div className="px-3.5 py-2.5 rounded-xl bg-[#132016] border border-[#606e60]/40 flex items-center justify-between text-xs text-[#c3ccc0]">
+                <span className="flex items-center gap-1.5 font-medium">
+                  <Users className="w-3.5 h-3.5 text-[#ad9e92]" /> Total Guests:
+                </span>
+                <span className="font-bold text-[#ad9e92] text-sm font-serif">
+                  {totalGuests} {totalGuests === 1 ? 'Guest' : 'Guests'} ({adults} Adults{children > 0 ? `, ${children} Kids` : ''})
+                </span>
               </div>
             </div>
 
@@ -758,146 +1151,45 @@ export const BookingWizardModal: React.FC = () => {
               </div>
             )}
 
-            {/* IF BOOKING CATEGORY IS ROOM */}
+            {/* IF BOOKING CATEGORY IS ROOM: Quick extra unit add if desired */}
             {bookingCategory === 'room' && (
-              <div className="space-y-3">
+              <div className="p-4 rounded-2xl bg-[#132016] border border-[#606e60]/60 space-y-3">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <label className="text-xs font-semibold text-[#c3ccc0] uppercase tracking-wider">
-                      Add / Choose Accommodations
-                    </label>
-                    <span className="text-[10px] text-[#ad9e92] font-bold bg-[#132016] px-2 py-0.5 rounded-full border border-[#606e60]/40">
-                      Party: {adults + children} Guests
-                    </span>
+                  <div>
+                    <h6 className="font-bold text-xs text-[#ebe5de] uppercase tracking-wider">
+                      Add More Units to This Reservation (Optional)
+                    </h6>
+                    <p className="text-[11px] text-[#c3ccc0]">
+                      Traveling with multiple families or a large group? Click to add extra cottages or kubos:
+                    </p>
                   </div>
-                  
-                  {/* Category Filters */}
-                  <div className="flex flex-wrap gap-1">
-                    {(['All', 'Cottages', 'Filipino Kubos', 'Rooms and Suites'] as const).map((cat) => (
-                      <button
-                        key={cat}
-                        type="button"
-                        onClick={() => setModalCategoryFilter(cat)}
-                        className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
-                          modalCategoryFilter === cat
-                            ? 'bg-[#ad9e92] text-[#1c2a20] shadow-sm'
-                            : 'bg-[#132016] text-[#c3ccc0] hover:bg-[#1c2a20] border border-[#606e60]/60'
-                        }`}
-                      >
-                        {cat === 'Rooms and Suites' ? 'Rooms' : cat}
-                      </button>
-                    ))}
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setStep(1)}
+                    className="text-xs text-[#ad9e92] hover:text-[#ebe5de] underline font-semibold cursor-pointer shrink-0 self-start sm:self-center"
+                  >
+                    Browse Full Catalog
+                  </button>
                 </div>
 
-                <div className="space-y-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   {rooms
-                    .filter((r) => modalCategoryFilter === 'All' || (r.category || 'Rooms and Suites') === modalCategoryFilter)
-                    .map((r) => {
-                      const occStatus = checkRoomOccupied(r.id, checkInDate, checkOutDate, rooms, bookings);
-                      const isOccupied = occStatus.isOccupied;
-                      const countAllocated = selectedRooms.filter((sr) => sr.id === r.id).length;
-                      const isAllocated = countAllocated > 0;
-                      const fitsCapacity = totalGuests <= r.maxGuests;
-
-                      return (
-                        <div
-                          key={r.id}
-                          className={`p-4 rounded-2xl border transition-all ${
-                            isOccupied
-                              ? 'bg-[#181214] border-red-900/60 text-[#c3ccc0]'
-                              : isAllocated
-                                ? 'bg-[#1c2a20] border-[#ad9e92] text-[#ebe5de] shadow-lg ring-1 ring-[#ad9e92]/40'
-                                : 'bg-[#132016] border-[#606e60]/60 text-[#c3ccc0] hover:bg-[#1c2a20]'
-                          }`}
-                        >
-                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                            <div className="flex items-center gap-3">
-                              <img src={r.featuredImage} alt="" className="w-16 h-14 rounded-xl object-cover shrink-0 border border-[#606e60]/40" referrerPolicy="no-referrer" />
-                              <div>
-                                <div className="flex items-center flex-wrap gap-1.5">
-                                  <h5 className="font-bold text-sm text-[#ebe5de] font-serif">{r.name}</h5>
-                                  <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-[#2d4536] text-[#ebe5de]">
-                                    {r.category || 'Rooms and Suites'}
-                                  </span>
-                                  {fitsCapacity ? (
-                                    <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-700/50">
-                                      Fits {totalGuests} Guests (Max {r.maxGuests})
-                                    </span>
-                                  ) : (
-                                    <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-950 text-amber-300 border border-amber-800/50">
-                                      Max {r.maxGuests} Guests
-                                    </span>
-                                  )}
-                                  {countAllocated > 0 && (
-                                    <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-[#ad9e92] text-[#1c2a20] flex items-center gap-1">
-                                      <Check className="w-3 h-3 text-[#1c2a20]" />
-                                      Allocated ({countAllocated}x)
-                                    </span>
-                                  )}
-                                  {r.isComingSoon ? (
-                                    <span className="text-[10px] font-extrabold px-2 py-0.5 rounded bg-amber-600 text-white uppercase tracking-wider flex items-center gap-1">
-                                      <AlertTriangle className="w-3 h-3 text-amber-200" />
-                                      Coming Soon
-                                    </span>
-                                  ) : isOccupied ? (
-                                    <span className="text-[10px] font-extrabold px-2 py-0.5 rounded bg-red-600 text-white uppercase tracking-wider flex items-center gap-1">
-                                      <AlertTriangle className="w-3 h-3 text-amber-200" />
-                                      Occupied
-                                    </span>
-                                  ) : null}
-                                </div>
-                                <p className="text-xs text-[#c3ccc0] mt-0.5">{r.bedType} • Max capacity {r.maxGuests} guests</p>
-                                {r.isComingSoon ? (
-                                  <p className="text-[10px] text-amber-300 font-semibold mt-0.5">
-                                    {r.comingSoonNotice || 'Currently Unavailable - Coming Soon'}
-                                  </p>
-                                ) : isOccupied ? (
-                                  <p className="text-[10px] text-red-300 font-semibold mt-0.5">
-                                    Reserved for selected dates
-                                  </p>
-                                ) : null}
-                              </div>
-                            </div>
-
-                            {/* Actions & Pricing */}
-                            <div className="flex sm:flex-col items-center sm:items-end justify-between gap-2 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-[#606e60]/30">
-                              <div className="text-left sm:text-right">
-                                <span className="font-bold text-[#ad9e92] text-base font-serif">₱{r.pricePerNight.toLocaleString()}</span>
-                                <span className="text-[10px] text-[#c3ccc0] block">{r.category === 'Cottages' ? '/ day' : '/ night'}</span>
-                              </div>
-
-                              {!isOccupied && !r.isComingSoon && (
-                                <div className="flex items-center gap-1.5">
-                                  {selectedRooms.length === 1 && !isAllocated ? (
-                                    <button
-                                      type="button"
-                                      onClick={() => handleSelectPrimaryRoom(r)}
-                                      className="px-3 py-1.5 rounded-lg bg-[#1c2a20] border border-[#606e60] hover:border-[#ad9e92] text-[#ebe5de] text-xs font-bold transition-all cursor-pointer"
-                                    >
-                                      Select Only
-                                    </button>
-                                  ) : null}
-
-                                  <button
-                                    type="button"
-                                    onClick={() => handleAddAccommodation(r)}
-                                    className={`px-3 py-1.5 rounded-lg text-xs font-extrabold uppercase tracking-wider flex items-center gap-1 transition-all cursor-pointer ${
-                                      isAllocated
-                                        ? 'bg-[#ad9e92] text-[#1c2a20] hover:bg-[#c3ccc0] shadow-sm'
-                                        : 'bg-[#2d4536] hover:bg-[#3b5946] text-[#ebe5de] border border-[#606e60]'
-                                    }`}
-                                  >
-                                    <Plus className="w-3.5 h-3.5" />
-                                    <span>{isAllocated ? 'Add Another' : '+ Add to Stay'}</span>
-                                  </button>
-                                </div>
-                              )}
-                            </div>
-                          </div>
+                    .filter((r) => !r.isComingSoon && !selectedRooms.some((sr) => sr.id === r.id))
+                    .slice(0, 6)
+                    .map((r) => (
+                      <button
+                        key={r.id}
+                        type="button"
+                        onClick={() => handleAddAccommodation(r)}
+                        className="p-2.5 rounded-xl bg-[#1c2a20] border border-[#606e60]/60 hover:bg-[#25362a] text-left flex items-center justify-between text-xs transition-colors cursor-pointer"
+                      >
+                        <div className="truncate mr-2">
+                          <p className="font-bold text-[#ebe5de] truncate">{r.name}</p>
+                          <p className="text-[10px] text-[#c3ccc0]">{r.category} • Max {r.maxGuests} Guests</p>
                         </div>
-                      );
-                    })}
+                        <span className="text-amber-300 font-bold shrink-0">+₱{r.pricePerNight.toLocaleString()}</span>
+                      </button>
+                    ))}
                 </div>
               </div>
             )}
@@ -905,81 +1197,32 @@ export const BookingWizardModal: React.FC = () => {
             {/* IF BOOKING CATEGORY IS PACKAGE */}
             {bookingCategory === 'package' && (
               <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-semibold text-[#c3ccc0] uppercase tracking-wider">
-                    Select All-Inclusive Package ({packages.length} Available)
-                  </label>
-                  <span className="text-[11px] text-amber-300 font-bold bg-amber-950/60 px-2 py-0.5 rounded border border-amber-800/40">
-                    Includes Special Resort Inclusions
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-1 gap-3">
-                  {packages.map((pkg) => {
-                    const isSelected = selectedPackage?.id === pkg.id;
-                    const pkgCapacity = getPackageBaseCapacity(pkg);
-
-                    return (
-                      <div
-                        key={pkg.id}
-                        onClick={() => {
-                          setSelectedPackage(pkg);
-                          setOccupiedNotice(null);
-                        }}
-                        className={`p-4 rounded-2xl border transition-all cursor-pointer flex flex-col sm:flex-row gap-4 ${
-                          isSelected
-                            ? 'bg-[#1c2a20] border-amber-500 text-[#ebe5de] shadow-xl ring-2 ring-amber-500/40'
-                            : 'bg-[#132016] border-[#606e60]/60 text-[#c3ccc0] hover:bg-[#1c2a20]'
-                        }`}
-                      >
-                        <div className="sm:w-40 h-32 shrink-0 rounded-xl overflow-hidden relative border border-[#606e60]/40">
-                          <img src={pkg.featuredImage} alt={pkg.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                          {pkg.isPopular && (
-                            <span className="absolute top-2 left-2 bg-amber-600 text-white text-[9px] font-extrabold px-2 py-0.5 rounded uppercase tracking-wider shadow-md flex items-center gap-1">
-                              <Sparkles className="w-2.5 h-2.5 text-amber-200" /> Popular
-                            </span>
-                          )}
-                        </div>
-
-                        <div className="flex-1 space-y-2">
-                          <div className="flex items-start justify-between gap-2">
-                            <div>
-                              <h5 className="font-bold text-base text-[#ebe5de] font-serif flex items-center gap-2">
-                                {pkg.name}
-                                {isSelected && (
-                                  <span className="text-[10px] bg-amber-600 text-white font-extrabold px-2 py-0.5 rounded-full flex items-center gap-1">
-                                    <Check className="w-3 h-3 text-white" /> Selected
-                                  </span>
-                                )}
-                              </h5>
-                              <span className="text-[11px] text-[#ad9e92] font-semibold">{pkg.duration} • {pkg.tagline || `Base Capacity: ${pkg.recommendedGuests}`} (Max ~{pkgCapacity} guests)</span>
-                            </div>
-                            <div className="text-right shrink-0">
-                              <span className="font-bold text-amber-300 text-xl font-serif">₱{pkg.price.toLocaleString()}</span>
-                              <span className="text-[10px] text-[#c3ccc0] block">package rate</span>
-                            </div>
-                          </div>
-
-                          <p className="text-xs text-[#c3ccc0]">{pkg.description}</p>
-
-                          {/* Inclusions summary */}
-                          <div className="pt-2 border-t border-[#606e60]/40">
-                            <span className="text-[10px] font-bold text-amber-200 uppercase tracking-wider block mb-1">
-                              Package Inclusions:
-                            </span>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1 text-[11px] text-[#c3ccc0]">
-                              {pkg.inclusions.map((inc, i) => (
-                                <div key={i} className="flex items-center gap-1.5">
-                                  <Check className="w-3 h-3 text-amber-400 shrink-0" />
-                                  <span className="truncate">{inc}</span>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        </div>
+                <div className="p-4 rounded-2xl bg-[#1c2a20] border border-amber-500/50 space-y-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <span className="text-[10px] uppercase font-bold text-amber-300 tracking-wider block">
+                        Included In Your Selected Package
+                      </span>
+                      <h5 className="font-bold text-base text-[#ebe5de] font-serif">
+                        {selectedPackage?.name}
+                      </h5>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setStep(1)}
+                      className="text-xs text-amber-300 hover:text-amber-200 underline font-semibold cursor-pointer shrink-0"
+                    >
+                      Change Package
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-1 text-[11px] text-[#c3ccc0] pt-1">
+                    {selectedPackage?.inclusions.map((inc, i) => (
+                      <div key={i} className="flex items-center gap-1.5">
+                        <Check className="w-3 h-3 text-amber-400 shrink-0" />
+                        <span className="truncate">{inc}</span>
                       </div>
-                    );
-                  })}
+                    ))}
+                  </div>
                 </div>
 
                 {/* Additional Attached Accommodations for Package if Group is Large */}
@@ -1035,17 +1278,42 @@ export const BookingWizardModal: React.FC = () => {
               </div>
             )}
 
-            {/* Optional Add-on Services */}
-            <div className="space-y-3 pt-4 border-t border-[#606e60]/60">
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-semibold text-[#c3ccc0] uppercase tracking-wider block">
-                  Enhance Your Stay (Optional Add-Ons)
-                </label>
-                <span className="text-[10px] text-amber-300 font-bold bg-amber-950/60 px-2 py-0.5 rounded border border-amber-800/40">
-                  Optional Experiences
-                </span>
-              </div>
+            <div className="flex gap-3 pt-4">
+              <button
+                type="button"
+                onClick={handlePrevStep}
+                className="py-3 px-4 rounded-xl bg-[#1c2a20] border border-[#606e60] text-[#c3ccc0] font-bold text-xs uppercase"
+              >
+                Back to Catalog
+              </button>
+              <button
+                type="button"
+                onClick={handleNextStep}
+                className="flex-1 py-3.5 rounded-xl bg-[#ad9e92] hover:bg-[#c3ccc0] text-[#1c2a20] font-extrabold text-xs uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer shadow-lg transition-colors"
+              >
+                <span>CONTINUE TO ADD-ONS</span>
+                <ArrowRight className="w-4 h-4 text-[#1c2a20]" />
+              </button>
+            </div>
+          </div>
+        )}
 
+        {/* Step 3: Enhance Your Stay (Optional Add-Ons) */}
+        {step === 3 && (
+          <div className="p-6 sm:p-8 space-y-6 max-h-[75vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-[#606e60]/60 pb-4">
+              <div>
+                <h4 className="text-xl font-bold font-serif text-[#ebe5de] flex items-center gap-2">
+                  <Sparkles className="w-5 h-5 text-amber-300" />
+                  Step 3: Enhance Your Stay (Optional Add-Ons)
+                </h4>
+                <p className="text-xs text-[#c3ccc0] mt-1">
+                  Customize your resort stay with authentic bonfire kits, Filipino BBQ grills, breakfasts, and more.
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-3">
               <div className="space-y-2.5">
                 {availableAddOns.map((addon) => {
                   const isChecked = !!selectedAddOns[addon.id];
@@ -1103,12 +1371,14 @@ export const BookingWizardModal: React.FC = () => {
 
             <div className="flex gap-3 pt-4">
               <button
+                type="button"
                 onClick={handlePrevStep}
                 className="py-3 px-4 rounded-xl bg-[#1c2a20] border border-[#606e60] text-[#c3ccc0] font-bold text-xs uppercase"
               >
-                Back
+                Back to Dates & Guests
               </button>
               <button
+                type="button"
                 onClick={handleNextStep}
                 className="flex-1 py-3.5 rounded-xl bg-[#ad9e92] hover:bg-[#c3ccc0] text-[#1c2a20] font-extrabold text-xs uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer shadow-lg transition-colors"
               >
@@ -1119,12 +1389,12 @@ export const BookingWizardModal: React.FC = () => {
           </div>
         )}
 
-        {/* Step 3: Guest Information */}
-        {step === 3 && (
+        {/* Step 4: Guest Information */}
+        {step === 4 && (
           <div className="p-6 sm:p-8 space-y-6">
             <h4 className="text-xl font-bold font-serif text-[#ebe5de] flex items-center gap-2">
               <Users className="w-5 h-5 text-[#ad9e92]" />
-              Step 3: Guest Information
+              Step 4: Guest Information
             </h4>
 
             <div className="space-y-4">
@@ -1195,12 +1465,12 @@ export const BookingWizardModal: React.FC = () => {
           </div>
         )}
 
-        {/* Step 4: Booking Summary & Payment Choice */}
-        {step === 4 && (
+        {/* Step 5: Booking Summary & Payment Choice */}
+        {step === 5 && (
           <div className="p-6 sm:p-8 space-y-6 max-h-[80vh] overflow-y-auto">
             <h4 className="text-xl font-bold font-serif text-[#ebe5de] flex items-center gap-2">
               <Receipt className="w-5 h-5 text-[#ad9e92]" />
-              Step 4: Review Summary & Select Payment Mode
+              Step 5: Review Summary & Select Payment Mode
             </h4>
 
             {/* Summary Box with Multi-Accommodation Details */}
@@ -1503,8 +1773,8 @@ export const BookingWizardModal: React.FC = () => {
           </div>
         )}
 
-        {/* Step 5: Final Confirmation & Download Voucher */}
-        {step === 5 && createdBooking && (
+        {/* Step 6: Final Confirmation & Download Voucher */}
+        {step === 6 && createdBooking && (
           <div className="p-6 sm:p-8 space-y-6 text-center">
             <div className="w-16 h-16 rounded-full bg-[#1c2a20] border-2 border-[#ad9e92] flex items-center justify-center text-[#ad9e92] mx-auto shadow-2xl">
               <CheckCircle2 className="w-10 h-10" />
