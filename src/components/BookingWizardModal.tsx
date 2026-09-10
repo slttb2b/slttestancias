@@ -29,6 +29,7 @@ import {
   AlertTriangle,
   Gift,
   Plus,
+  FileText,
 } from 'lucide-react';
 
 export const BookingWizardModal: React.FC = () => {
@@ -120,6 +121,10 @@ export const BookingWizardModal: React.FC = () => {
   const [selectedPaymentChannel, setSelectedPaymentChannel] = useState<PaymentChannel>('GCash');
   const [paymentReceiptUrl, setPaymentReceiptUrl] = useState<string>('');
   const [paymentReferenceCode, setPaymentReferenceCode] = useState<string>('');
+
+  // Terms & Conditions agreement state
+  const [agreedToTerms, setAgreedToTerms] = useState(false);
+  const [termsError, setTermsError] = useState(false);
 
   // Confirmation result state
   const [createdBooking, setCreatedBooking] = useState<Booking | null>(null);
@@ -341,6 +346,11 @@ export const BookingWizardModal: React.FC = () => {
   };
 
   const handleFinalSubmitBooking = () => {
+    if (!agreedToTerms) {
+      setTermsError(true);
+      return;
+    }
+
     const dateValidation = validateBookingDates(checkInDate, checkOutDate);
     if (!dateValidation.isValid) {
       setOccupiedNotice(dateValidation.errorMessage || 'Invalid date range selected.');
@@ -428,6 +438,8 @@ export const BookingWizardModal: React.FC = () => {
     setStep(1);
     setCreatedBooking(null);
     setOccupiedNotice(null);
+    setAgreedToTerms(false);
+    setTermsError(false);
   };
 
   const handlePrintVoucher = () => {
@@ -1750,6 +1762,66 @@ export const BookingWizardModal: React.FC = () => {
                 </div>
               </div>
             )}
+
+            {/* BOOKING TERMS & CONDITIONS */}
+            <div className={`p-4 sm:p-5 rounded-2xl bg-[#1c2a20] border transition-colors ${
+              termsError ? 'border-amber-500/80 ring-1 ring-amber-500/40' : 'border-[#ad9e92]/50'
+            }`}>
+              <div className="flex items-center gap-2 mb-2.5">
+                <FileText className="w-4 h-4 text-[#ad9e92]" />
+                <h4 className="text-xs font-bold text-[#ad9e92] uppercase tracking-wider">
+                  BOOKING TERMS & CONDITIONS
+                </h4>
+              </div>
+              <ul className="space-y-2 text-xs text-[#ebe5de]">
+                <li className="flex items-start gap-2">
+                  <span className="text-[#ad9e92] font-bold text-sm leading-none shrink-0">•</span>
+                  <span>All bookings are <strong>NON-REFUNDABLE</strong>, <strong>NON-TRANSFERABLE</strong>, and <strong>NON-REBOOKABLE</strong>.</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-[#ad9e92] font-bold text-sm leading-none shrink-0">•</span>
+                  <span>Once the booking is confirmed, the date and reservation are considered final.</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-[#ad9e92] font-bold text-sm leading-none shrink-0">•</span>
+                  <span>No refund will be given for cancellation, no-show, late arrival, or early departure.</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-[#ad9e92] font-bold text-sm leading-none shrink-0">•</span>
+                  <span>Guests must review all booking details, including the resort location/address, date, cottage, and rates, before making payment.</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-[#ad9e92] font-bold text-sm leading-none shrink-0">•</span>
+                  <span>Once payment is made and the booking is confirmed, it means the guest has read, understood, and agreed to our Booking Terms & Conditions.</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-[#ad9e92] font-bold text-sm leading-none shrink-0">•</span>
+                  <span>Proof of payment is required to confirm the reservation.</span>
+                </li>
+              </ul>
+
+              <label className="flex items-start gap-2.5 pt-3 mt-3 border-t border-[#606e60]/50 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={agreedToTerms}
+                  onChange={(e) => {
+                    setAgreedToTerms(e.target.checked);
+                    if (e.target.checked) setTermsError(false);
+                  }}
+                  className="mt-0.5 rounded border-[#606e60] text-[#ad9e92] focus:ring-[#ad9e92] cursor-pointer"
+                />
+                <span className="text-xs font-semibold text-[#ebe5de] leading-snug">
+                  I have reviewed all booking details (location, date, accommodation, rates) and agree to the <span className="text-[#ad9e92]">Booking Terms & Conditions</span>.
+                </span>
+              </label>
+
+              {termsError && (
+                <p className="text-[11px] text-amber-400 font-semibold pt-2 flex items-center gap-1.5">
+                  <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                  Please review and check the agreement box before confirming your booking.
+                </p>
+              )}
+            </div>
 
             <div className="flex gap-3 pt-4">
               <button

@@ -49,21 +49,49 @@ export const PrivacyTermsModal: React.FC<PrivacyTermsModalProps> = ({ type, onCl
             </p>
           </div>
         ) : (
-          <div className="space-y-4 text-xs text-[#c3ccc0] leading-relaxed font-light">
-            <h4 className="font-bold text-[#ebe5de] text-sm">1. Check-In & Check-Out Policy</h4>
-            <p>
-              Standard Check-In time is at 2:00 PM. Standard Check-Out time is at 12:00 PM. Early check-in or late check-out is subject to room availability and front desk confirmation.
-            </p>
+          <div className="space-y-5 text-xs text-[#c3ccc0] leading-relaxed font-light">
+            <div className="p-4 sm:p-5 rounded-2xl bg-[#1c2a20] border border-[#ad9e92]/50 shadow-inner">
+              <h3 className="text-sm font-bold text-[#ad9e92] uppercase tracking-wider mb-3.5 flex items-center gap-2">
+                <FileText className="w-4 h-4 text-[#ad9e92]" />
+                BOOKING TERMS & CONDITIONS
+              </h3>
+              <ul className="space-y-3 text-xs text-[#ebe5de]">
+                <li className="flex items-start gap-2.5">
+                  <span className="text-[#ad9e92] font-bold text-base leading-none shrink-0">•</span>
+                  <span>All bookings are <strong>NON-REFUNDABLE</strong>, <strong>NON-TRANSFERABLE</strong>, and <strong>NON-REBOOKABLE</strong>.</span>
+                </li>
+                <li className="flex items-start gap-2.5">
+                  <span className="text-[#ad9e92] font-bold text-base leading-none shrink-0">•</span>
+                  <span>Once the booking is confirmed, the date and reservation are considered final.</span>
+                </li>
+                <li className="flex items-start gap-2.5">
+                  <span className="text-[#ad9e92] font-bold text-base leading-none shrink-0">•</span>
+                  <span>No refund will be given for cancellation, no-show, late arrival, or early departure.</span>
+                </li>
+                <li className="flex items-start gap-2.5">
+                  <span className="text-[#ad9e92] font-bold text-base leading-none shrink-0">•</span>
+                  <span>Guests must review all booking details, including the resort location/address, date, cottage, and rates, before making payment.</span>
+                </li>
+                <li className="flex items-start gap-2.5">
+                  <span className="text-[#ad9e92] font-bold text-base leading-none shrink-0">•</span>
+                  <span>Once payment is made and the booking is confirmed, it means the guest has read, understood, and agreed to our Booking Terms & Conditions.</span>
+                </li>
+                <li className="flex items-start gap-2.5">
+                  <span className="text-[#ad9e92] font-bold text-base leading-none shrink-0">•</span>
+                  <span>Proof of payment is required to confirm the reservation.</span>
+                </li>
+              </ul>
+            </div>
 
-            <h4 className="font-bold text-[#ebe5de] text-sm">2. Reservation & Cancellation</h4>
-            <p>
-              A 50% partial deposit or full payment confirms your room reservation. Cancellations made at least 48 hours prior to check-in are eligible for date rebooking.
-            </p>
-
-            <h4 className="font-bold text-[#ebe5de] text-sm">3. Resort Guidelines & Pool Rules</h4>
-            <p>
-              Proper swimwear is required in the swimming pools. Guests are expected to maintain peace and respect resort property at all times.
-            </p>
+            <div className="space-y-3 pt-2">
+              <h4 className="font-bold text-[#ebe5de] text-sm">Resort Guidelines & Check-In Information</h4>
+              <p>
+                Standard Check-In time begins at 2:00 PM and Standard Check-Out time is at 12:00 PM noon. Please present a digital or printed copy of your booking confirmation voucher along with a valid government ID at the front desk upon arrival.
+              </p>
+              <p>
+                Proper swimwear is required in the swimming pools. Guests are expected to maintain peace, observe quiet hours, and respect sanctuary property at all times.
+              </p>
+            </div>
           </div>
         )}
       </div>
