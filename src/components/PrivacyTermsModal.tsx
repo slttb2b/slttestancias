@@ -94,7 +94,11 @@ export const PrivacyTermsModal: React.FC<PrivacyTermsModalProps> = ({ type, onCl
             <div className="space-y-3 pt-2">
               <h4 className="font-bold text-[#ebe5de] text-sm">Resort Guidelines & Check-In Information</h4>
               <p>
-                Standard Check-In time begins at 2:00 PM and Standard Check-Out time is at 12:00 PM noon. Please present a digital or printed copy of your booking confirmation voucher along with a valid government ID at the front desk upon arrival.
+                Standard check-in time:
+                <br />
+                ☀️ <strong className="text-[#ebe5de]">DAY STAY:</strong> 8:00 AM–5:00 PM
+                <br />
+                🌙 <strong className="text-[#ebe5de]">NIGHT STAY:</strong> 6:00 PM–6:00 AM. Please present a digital or printed copy of your booking confirmation voucher along with a valid government ID at the front desk upon arrival.
               </p>
               <p>
                 Proper swimwear is required in the swimming pools. Guests are expected to maintain peace, observe quiet hours, and respect sanctuary property at all times.

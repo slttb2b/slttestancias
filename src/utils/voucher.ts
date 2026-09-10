@@ -316,7 +316,7 @@ export const generateVoucherHTML = (booking: Booking, resortInfo: ResortInfo): s
 
       <div class="section-title">Important Resort Policies</div>
       <div class="notice-box">
-        <strong>Check-In Policy:</strong> Standard Check-In starts at 2:00 PM; Check-Out is at 12:00 PM noon.<br>
+        <strong>Check-In Policy & Hours:</strong> Standard check-in time: ☀️ DAY STAY: 8:00 AM–5:00 PM | 🌙 NIGHT STAY: 6:00 PM–6:00 AM.<br>
         <strong>Voucher Instructions:</strong> Please present a digital copy or printed copy of this voucher along with a valid Government ID at the front desk upon arrival.<br>
         <strong>Resort Address:</strong> ${resortInfo.address}<br>
         <strong>Hotline / Inquiry:</strong> ${resortInfo.contactNumber} | ${resortInfo.email}
