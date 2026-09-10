@@ -304,11 +304,13 @@ export const generateVoucherHTML = (booking: Booking, resortInfo: ResortInfo): s
       <div class="notice-box" style="margin-bottom: 14px; background-color: #fff9f5; border: 1px solid #e0c8b8;">
         <ul style="margin: 0; padding-left: 18px; color: #3a2c20; font-size: 11px; line-height: 1.5;">
           <li>All bookings are <strong>NON-REFUNDABLE</strong>, <strong>NON-TRANSFERABLE</strong>, and <strong>NON-REBOOKABLE</strong>.</li>
-          <li>Once the booking is confirmed, the date and reservation are considered final.</li>
+          <li>Once the booking is confirmed, the date and reservation are final.</li>
           <li>No refund will be given for cancellation, no-show, late arrival, or early departure.</li>
-          <li>Guests must review all booking details, including the resort location/address, date, cottage, and rates, before making payment.</li>
-          <li>Once payment is made and the booking is confirmed, it means the guest has read, understood, and agreed to our Booking Terms & Conditions.</li>
+          <li>Guests are responsible for reviewing all booking details, including the resort location/address, date, cottage, number of guests, and rates, before making payment.</li>
+          <li>Payment confirms that the guest has reviewed, understood, and agreed to these Booking Terms & Conditions.</li>
+          <li>Once payment is received, the selected cottage and date are blocked and reserved exclusively for the guest.</li>
           <li>Proof of payment is required to confirm the reservation.</li>
+          <li>Any exception to these terms, if granted, is at the sole discretion of SLTT Estancias Resort and should not be considered a change to our standard policy.</li>
         </ul>
       </div>
 

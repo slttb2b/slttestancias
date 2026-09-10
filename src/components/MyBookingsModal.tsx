@@ -212,7 +212,7 @@ export const MyBookingsModal: React.FC<MyBookingsModalProps> = ({ isOpen, onClos
 
                 <div className="p-3 rounded-xl bg-[#132016]/80 border border-[#606e60]/50 text-[11px] text-[#c3ccc0] space-y-1">
                   <span className="font-bold text-[#ad9e92] block uppercase tracking-wider text-[10px]">Booking Policy Notice</span>
-                  <p>All bookings are non-refundable, non-transferable, and non-rebookable. Once confirmed, reservation dates are final. Proof of payment is required for confirmation.</p>
+                  <p>All bookings are non-refundable, non-transferable, and non-rebookable. Once confirmed, the date and reservation are final. Proof of payment is required to confirm.</p>
                 </div>
 
                 <div className="pt-2 flex gap-2">

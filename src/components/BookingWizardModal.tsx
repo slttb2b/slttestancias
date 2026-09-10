@@ -1780,7 +1780,7 @@ export const BookingWizardModal: React.FC = () => {
                 </li>
                 <li className="flex items-start gap-2">
                   <span className="text-[#ad9e92] font-bold text-sm leading-none shrink-0">•</span>
-                  <span>Once the booking is confirmed, the date and reservation are considered final.</span>
+                  <span>Once the booking is confirmed, the date and reservation are final.</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <span className="text-[#ad9e92] font-bold text-sm leading-none shrink-0">•</span>
@@ -1788,15 +1788,23 @@ export const BookingWizardModal: React.FC = () => {
                 </li>
                 <li className="flex items-start gap-2">
                   <span className="text-[#ad9e92] font-bold text-sm leading-none shrink-0">•</span>
-                  <span>Guests must review all booking details, including the resort location/address, date, cottage, and rates, before making payment.</span>
+                  <span>Guests are responsible for reviewing all booking details, including the resort location/address, date, cottage, number of guests, and rates, before making payment.</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <span className="text-[#ad9e92] font-bold text-sm leading-none shrink-0">•</span>
-                  <span>Once payment is made and the booking is confirmed, it means the guest has read, understood, and agreed to our Booking Terms & Conditions.</span>
+                  <span>Payment confirms that the guest has reviewed, understood, and agreed to these Booking Terms & Conditions.</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-[#ad9e92] font-bold text-sm leading-none shrink-0">•</span>
+                  <span>Once payment is received, the selected cottage and date are blocked and reserved exclusively for the guest.</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <span className="text-[#ad9e92] font-bold text-sm leading-none shrink-0">•</span>
                   <span>Proof of payment is required to confirm the reservation.</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-[#ad9e92] font-bold text-sm leading-none shrink-0">•</span>
+                  <span>Any exception to these terms, if granted, is at the sole discretion of SLTT Estancias Resort and should not be considered a change to our standard policy.</span>
                 </li>
               </ul>
 
