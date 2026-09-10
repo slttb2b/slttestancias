@@ -8,7 +8,7 @@ import { EditableImage } from './common/EditableImage';
 export const RoomsSection: React.FC = () => {
   const { rooms, setRooms, setSelectedRoomDetails, setSelectedRoomForBooking, setIsBookingModalOpen, theme } = useResort();
   const isLight = theme === 'light';
-  const [selectedCategory, setSelectedCategory] = React.useState<'All' | 'Rooms and Suites' | 'Cottages' | 'Filipino Kubos'>('All');
+  const [selectedCategory, setSelectedCategory] = React.useState<'All' | 'Rooms and Suites' | 'Cottages' | 'Filipino Kubos' | 'Mesa Collection'>('All');
 
   const filteredRooms = selectedCategory === 'All'
     ? rooms
@@ -61,13 +61,13 @@ export const RoomsSection: React.FC = () => {
           <p className={`text-base sm:text-lg font-light ${
             isLight ? 'text-[#3c5241]' : 'text-[#c3ccc0]'
           }`}>
-            Choose from overnight rooms, relaxing day cottages, or authentic Filipino kubos surrounded by mountain air.
+            Choose from overnight rooms, relaxing day cottages, Filipino kubos, or the exclusive Mesa Collection surrounded by mountain air.
           </p>
         </div>
 
         {/* Category Filter Tabs */}
         <div className="flex flex-wrap justify-center gap-2.5 mb-12">
-          {(['All', 'Cottages', 'Filipino Kubos', 'Rooms and Suites'] as const).map((cat) => {
+          {(['All', 'Rooms and Suites', 'Cottages', 'Filipino Kubos', 'Mesa Collection'] as const).map((cat) => {
             const count = cat === 'All' ? rooms.length : rooms.filter((r) => (r.category || 'Rooms and Suites') === cat).length;
             const isActive = selectedCategory === cat;
             return (

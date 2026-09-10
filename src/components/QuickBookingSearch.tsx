@@ -85,7 +85,7 @@ export const QuickBookingSearch: React.FC = () => {
     } else if (
       searchFilters.roomType &&
       searchFilters.roomType !== 'All' &&
-      !['Cottages', 'Filipino Kubos', 'Rooms and Suites', 'Packages'].includes(searchFilters.roomType)
+      !['Cottages', 'Filipino Kubos', 'Rooms and Suites', 'Mesa Collection', 'Packages'].includes(searchFilters.roomType)
     ) {
       targetRoom = rooms.find((r) => r.id === searchFilters.roomType) || null;
     }
@@ -278,14 +278,50 @@ export const QuickBookingSearch: React.FC = () => {
               }`}
             >
               <option value="All">All Accommodations & Packages</option>
-              <option value="Cottages">1. Cottages (Up to 25 Guests)</option>
-              <option value="Filipino Kubos">2. Filipino Kubos (Up to 20 Guests)</option>
-              <option value="Rooms and Suites">3. Rooms & Suites (Up to 6 Guests)</option>
-              <option value="Packages">4. Experience Packages</option>
+              <option value="Rooms and Suites">1. Rooms & Suites (Up to 6 Guests)</option>
+              <option value="Mesa Collection">2. Mesa Collection (Exclusive Villas & Suites)</option>
+              <option value="Cottages">3. Cottages (Up to 25 Guests)</option>
+              <option value="Filipino Kubos">4. Filipino Kubos (Up to 20 Guests)</option>
+              <option value="Packages">5. Experience Packages</option>
             </select>
           </div>
 
-          {/* Secondary Dropdown: Specific Cottage, Kubo, Room, or Package */}
+          {/* Secondary Dropdown: Specific Cottage, Kubo, Room, Mesa, or Package */}
+          {searchFilters.roomType === 'Mesa Collection' && (
+            <div className="space-y-1.5">
+              <label className={`text-xs font-semibold uppercase tracking-wider flex items-center justify-between gap-1.5 ${
+                isLight ? 'text-[#2d4536]' : 'text-[#c3ccc0]'
+              }`}>
+                <span className="flex items-center gap-1.5">
+                  <Sparkles className={`w-3.5 h-3.5 ${isLight ? 'text-[#2d4536]' : 'text-[#ad9e92]'}`} />
+                  Select Mesa Collection Unit
+                </span>
+                <span className="text-[10px] text-[#ad9e92] font-bold">Party: {totalGuests}</span>
+              </label>
+              <select
+                value={searchFilters.cottageType || 'All'}
+                onChange={(e) => setSearchFilters({ ...searchFilters, cottageType: e.target.value })}
+                className={`w-full px-3 py-2.5 rounded-xl text-sm focus:outline-none transition-colors ${
+                  isLight
+                    ? 'bg-[#f6f3ed] border border-[#d8d0c2] text-[#1c2a20] focus:border-[#2d4536]'
+                    : 'bg-[#1c2a20] border border-[#606e60]/60 text-[#ebe5de] focus:border-[#c3ccc0]'
+                }`}
+              >
+                <option value="All">All Mesa Collection Units</option>
+                {rooms
+                  .filter((r) => r.category === 'Mesa Collection')
+                  .map((r) => {
+                    const fits = totalGuests <= r.maxGuests;
+                    return (
+                      <option key={r.id} value={r.id}>
+                        {r.name} • Max {r.maxGuests} {r.maxGuests === 1 ? 'Guest' : 'Guests'} {fits ? '✓' : ''} {r.isComingSoon ? '(Coming Soon)' : `(₱${r.pricePerNight.toLocaleString()}/night)`}
+                      </option>
+                    );
+                  })}
+              </select>
+            </div>
+          )}
+
           {searchFilters.roomType === 'Cottages' && (
             <div className="space-y-1.5">
               <label className={`text-xs font-semibold uppercase tracking-wider flex items-center justify-between gap-1.5 ${
@@ -466,6 +502,16 @@ export const QuickBookingSearch: React.FC = () => {
                 <optgroup label="Rooms & Suites (Up to 6 Guests)">
                   {rooms
                     .filter((r) => r.category === 'Rooms and Suites' || !r.category)
+                    .map((r) => (
+                      <option key={r.id} value={r.id}>
+                        {r.name} (Max {r.maxGuests} Guests - ₱{r.pricePerNight.toLocaleString()}/night)
+                      </option>
+                    ))}
+                </optgroup>
+
+                <optgroup label="Mesa Collection (Exclusive Villas & Suites)">
+                  {rooms
+                    .filter((r) => r.category === 'Mesa Collection')
                     .map((r) => (
                       <option key={r.id} value={r.id}>
                         {r.name} (Max {r.maxGuests} Guests - ₱{r.pricePerNight.toLocaleString()}/night)

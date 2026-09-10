@@ -56,7 +56,7 @@ export const AdminOccupancyBoard: React.FC<AdminOccupancyBoardProps> = ({
   const [selectedDate, setSelectedDate] = useState<string>(todayStr);
 
   // Filters
-  const [categoryFilter, setCategoryFilter] = useState<'All' | 'Rooms and Suites' | 'Cottages' | 'Filipino Kubos'>('All');
+  const [categoryFilter, setCategoryFilter] = useState<'All' | 'Rooms and Suites' | 'Cottages' | 'Filipino Kubos' | 'Mesa Collection'>('All');
   const [statusFilter, setStatusFilter] = useState<'all' | 'occupied' | 'vacant' | 'arriving_today' | 'blocked' | 'coming_soon'>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
@@ -424,7 +424,7 @@ export const AdminOccupancyBoard: React.FC<AdminOccupancyBoardProps> = ({
         <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
           {/* Category Tabs */}
           <div className="flex flex-wrap items-center gap-1.5 p-1 bg-[#0e1710] rounded-2xl border border-[#606e60]/60 text-xs">
-            {(['All', 'Rooms and Suites', 'Cottages', 'Filipino Kubos'] as const).map((cat) => {
+            {(['All', 'Rooms and Suites', 'Mesa Collection', 'Cottages', 'Filipino Kubos'] as const).map((cat) => {
               const count = rooms.filter((r) => cat === 'All' || (r.category || 'Rooms and Suites') === cat).length;
               const isSelected = categoryFilter === cat;
               return (

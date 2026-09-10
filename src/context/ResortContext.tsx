@@ -158,6 +158,7 @@ interface ResortContextType {
   updateBookingStatus: (id: string, status: BookingStatus, notes?: string, paymentStatus?: 'Unpaid' | 'Deposit Paid' | 'Fully Paid') => void;
   deleteBooking: (id: string) => void;
   clearAllBookings: () => Promise<void>;
+  recalculateBookingsWithoutTax: () => Promise<number>;
   attachBookingReceipt: (bookingId: string, receiptUrl: string, refCode?: string) => void;
   
   // Room actions
@@ -507,15 +508,75 @@ export const ResortProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
     });
 
-    const unsubBookings = subscribeBookings((b) => {
-      setBookings(b || []);
-      safeSave('sltt_bookings', b || []);
+    const unsubBookings = subscribeBookings((rawBookings) => {
+      const list = rawBookings || [];
+      const sanitized = list.map((b) => {
+        const currentTax = b.taxAmount || 0;
+        const subtotal = b.subtotal ?? ((b.roomPricePerNight || 0) * (b.numberOfNights || 1));
+        const addOnsTotal = b.addOnsTotal || 0;
+        const expectedTotal = subtotal + addOnsTotal;
+
+        // Check if revision needed: tax is > 0 OR totalAmount exceeds subtotal + addOns
+        const hasTax = currentTax > 0 || (expectedTotal > 0 && b.totalAmount > expectedTotal);
+        if (!hasTax) {
+          return b;
+        }
+
+        const cleanTotal = expectedTotal > 0 ? expectedTotal : Math.max(0, b.totalAmount - currentTax);
+        let cleanDeposit = cleanTotal;
+        if (b.paymentMethod === 'Partial Deposit (50%)' || b.paymentStatus === 'Deposit Paid') {
+          cleanDeposit = Math.round(cleanTotal * 0.5);
+        } else if (b.paymentMethod === 'Pay at Resort' || b.paymentStatus === 'Unpaid') {
+          cleanDeposit = 0;
+        }
+
+        const revisedBooking: Booking = {
+          ...b,
+          subtotal: subtotal > 0 ? subtotal : cleanTotal - addOnsTotal,
+          addOnsTotal,
+          taxAmount: 0,
+          totalAmount: cleanTotal,
+          depositAmount: cleanDeposit,
+        };
+
+        // Persist the clean revision back to Firestore asynchronously
+        saveBookingToFirestore(revisedBooking).catch((err) =>
+          console.error('Error auto-revising tax in booking:', b.id, err)
+        );
+
+        return revisedBooking;
+      });
+
+      setBookings(sanitized);
+      safeSave('sltt_bookings', sanitized);
     });
 
     const unsubRooms = subscribeRooms((r) => {
-      if (r) {
-        setRooms(r);
-        safeSave('sltt_rooms', r);
+      if (r && r.length > 0) {
+        // Ensure new accommodation categories from INITIAL_ROOMS (such as Mesa Collection) are synced to Firestore if missing
+        const existingIds = new Set(r.map((item) => item.id));
+        const missingDefaultRooms = INITIAL_ROOMS.filter((def) => !existingIds.has(def.id));
+        if (missingDefaultRooms.length > 0) {
+          missingDefaultRooms.forEach((missingRoom) => {
+            saveRoomToFirestore(missingRoom).catch((err) =>
+              console.error('Error auto-syncing new default room to Firestore:', missingRoom.id, err)
+            );
+          });
+          const merged = [...r, ...missingDefaultRooms];
+          setRooms(merged);
+          safeSave('sltt_rooms', merged);
+        } else {
+          setRooms(r);
+          safeSave('sltt_rooms', r);
+        }
+      } else if (r && r.length === 0) {
+        INITIAL_ROOMS.forEach((room) => {
+          saveRoomToFirestore(room).catch((err) =>
+            console.error('Error auto-seeding room to Firestore:', room.id, err)
+          );
+        });
+        setRooms(INITIAL_ROOMS);
+        safeSave('sltt_rooms', INITIAL_ROOMS);
       }
     });
 
@@ -1117,6 +1178,53 @@ export const ResortProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   };
 
+  const recalculateBookingsWithoutTax = async (): Promise<number> => {
+    let revisedCount = 0;
+    const updatedBookings = bookings.map((b) => {
+      const currentTax = b.taxAmount || 0;
+      const subtotal = b.subtotal ?? ((b.roomPricePerNight || 0) * (b.numberOfNights || 1));
+      const addOnsTotal = b.addOnsTotal || 0;
+      const expectedTotal = subtotal + addOnsTotal;
+
+      const hasTax = currentTax > 0 || (expectedTotal > 0 && b.totalAmount > expectedTotal);
+      if (!hasTax) return b;
+
+      revisedCount++;
+      const cleanTotal = expectedTotal > 0 ? expectedTotal : Math.max(0, b.totalAmount - currentTax);
+      let cleanDeposit = cleanTotal;
+      if (b.paymentMethod === 'Partial Deposit (50%)' || b.paymentStatus === 'Deposit Paid') {
+        cleanDeposit = Math.round(cleanTotal * 0.5);
+      } else if (b.paymentMethod === 'Pay at Resort' || b.paymentStatus === 'Unpaid') {
+        cleanDeposit = 0;
+      }
+
+      const cleanBooking: Booking = {
+        ...b,
+        subtotal: subtotal > 0 ? subtotal : cleanTotal - addOnsTotal,
+        addOnsTotal,
+        taxAmount: 0,
+        totalAmount: cleanTotal,
+        depositAmount: cleanDeposit,
+      };
+
+      saveBookingToFirestore(cleanBooking).catch((err) =>
+        console.error('Error saving revised booking to Firestore:', b.id, err)
+      );
+
+      return cleanBooking;
+    });
+
+    if (revisedCount > 0) {
+      setBookings(updatedBookings);
+      safeSave('sltt_bookings', updatedBookings);
+      showToast(`Successfully updated ${revisedCount} booking(s) to remove tax & environmental fee.`, 'success');
+    } else {
+      showToast('All bookings already have ₱0 tax.', 'info');
+    }
+
+    return revisedCount;
+  };
+
   const attachBookingReceipt = (bookingId: string, receiptUrl: string, refCode?: string) => {
     const target = bookings.find((b) => b.id === bookingId);
     if (target) {
@@ -1435,6 +1543,7 @@ export const ResortProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         updateBookingStatus,
         deleteBooking,
         clearAllBookings,
+        recalculateBookingsWithoutTax,
         attachBookingReceipt,
         toggleRoomAvailability,
         updateRoomPrice,

@@ -37,7 +37,7 @@ export interface Room {
   amenities: string[];
   isAvailable: boolean;
   blockedDates?: string[]; // ISO date strings (YYYY-MM-DD)
-  category?: 'Rooms and Suites' | 'Cottages' | 'Filipino Kubos';
+  category?: 'Rooms and Suites' | 'Cottages' | 'Filipino Kubos' | 'Mesa Collection';
   isComingSoon?: boolean;
   comingSoonNotice?: string;
 }

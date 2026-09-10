@@ -110,6 +110,7 @@ export const AdminDashboard: React.FC = () => {
     deleteChatThread,
     clearAllChatThreads,
     unreadChatCountOwner,
+    recalculateBookingsWithoutTax,
     adminUsers,
     currentAdminUser,
     setCurrentAdminUser,
@@ -229,7 +230,7 @@ export const AdminDashboard: React.FC = () => {
   };
 
   // ROOM EDIT / ADD STATE
-  const [selectedCategoryTab, setSelectedCategoryTab] = useState<'All' | 'Rooms and Suites' | 'Cottages' | 'Filipino Kubos'>('All');
+  const [selectedCategoryTab, setSelectedCategoryTab] = useState<'All' | 'Rooms and Suites' | 'Cottages' | 'Filipino Kubos' | 'Mesa Collection'>('All');
   const [editingRoom, setEditingRoom] = useState<Room | null>(null);
   const [isAddingRoom, setIsAddingRoom] = useState(false);
   const [isUploadingRoomImage, setIsUploadingRoomImage] = useState(false);
@@ -463,6 +464,29 @@ export const AdminDashboard: React.FC = () => {
       comingSoonNotice: 'Coming Soon - Opening Soon!',
     });
     setSelectedCategoryTab('Filipino Kubos');
+    setIsAddingRoom(true);
+  };
+
+  const handleQuickAddMesaUnit = () => {
+    const mesaCount = rooms.filter((r) => r.category === 'Mesa Collection').length + 1;
+    setNewRoomData({
+      name: `Mesa Collection Unit #${mesaCount}`,
+      category: 'Mesa Collection',
+      tagline: 'Exclusive designer villa with mountain and canopy vistas',
+      shortDescription: 'Signature luxury accommodation featuring high ceilings, private terrace deck, and premium designer finishes.',
+      fullDescription: 'Part of the prestigious Mesa Collection at SLTT Estancias Resort, offering elevated mountain and garden horizons, bespoke woodwork, a private terrace, and serene ambiance.',
+      maxGuests: 6,
+      bedType: '1 King Bed + 1 Queen Bed',
+      sizeSqM: 50,
+      pricePerNight: 4500,
+      featuredImage: 'https://images.unsplash.com/photo-1618773928121-c32242e63f39?auto=format&fit=crop&w=1200&q=80',
+      galleryImages: ['https://images.unsplash.com/photo-1618773928121-c32242e63f39?auto=format&fit=crop&w=1200&q=80'],
+      amenities: ['Private Terrace Deck', 'Air Conditioning', 'High-Speed Wi-Fi', 'Smart TV with Streaming', 'Hot & Cold Rainfall Shower', 'Mini Refrigerator', 'Coffee Bar'],
+      isAvailable: true,
+      isComingSoon: false,
+      comingSoonNotice: 'Coming Soon - Opening Soon!',
+    });
+    setSelectedCategoryTab('Mesa Collection');
     setIsAddingRoom(true);
   };
 
@@ -1432,6 +1456,17 @@ export const AdminDashboard: React.FC = () => {
                   </select>
                 </div>
 
+                {bookings.length > 0 && (
+                  <button
+                    onClick={() => recalculateBookingsWithoutTax()}
+                    className="px-3 py-2 rounded-xl bg-emerald-950/40 border border-emerald-700/60 text-emerald-300 hover:bg-emerald-900/60 hover:text-white transition-colors text-xs font-semibold flex items-center gap-1.5 cursor-pointer shrink-0"
+                    title="Recalculate and remove taxes from all existing bookings"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    <span>Sync Clean Totals</span>
+                  </button>
+                )}
+
                 {bookings.length > 0 && currentAdminUser?.permissions.canDeleteBookings !== false && (
                   <button
                     onClick={() => {
@@ -1968,6 +2003,14 @@ export const AdminDashboard: React.FC = () => {
                   <span>+ Quick Add Filipino Kubo</span>
                 </button>
                 <button
+                  onClick={handleQuickAddMesaUnit}
+                  className="px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-800 to-teal-800 hover:from-emerald-700 hover:to-teal-700 text-white font-bold text-xs uppercase flex items-center gap-1.5 cursor-pointer shadow-md transition-all border border-emerald-500/50"
+                  title="Quick prefill for a new Mesa Collection luxury unit"
+                >
+                  <Sparkles className="w-4 h-4 text-emerald-300" />
+                  <span>+ Quick Add Mesa Unit</span>
+                </button>
+                <button
                   onClick={() => setIsAddingRoom(true)}
                   className="px-4 py-2 rounded-xl bg-[#ad9e92] hover:bg-[#c3ccc0] text-[#1c2a20] font-bold text-xs uppercase flex items-center gap-1.5 cursor-pointer shadow-md transition-colors"
                 >
@@ -1979,7 +2022,7 @@ export const AdminDashboard: React.FC = () => {
 
             {/* Sub-tabs by Category */}
             <div className="flex flex-wrap gap-2 pb-2 border-b border-[#606e60]/40">
-              {(['All', 'Rooms and Suites', 'Cottages', 'Filipino Kubos'] as const).map((cat) => {
+              {(['All', 'Rooms and Suites', 'Mesa Collection', 'Cottages', 'Filipino Kubos'] as const).map((cat) => {
                 const count = cat === 'All' ? rooms.length : rooms.filter((r) => (r.category || 'Rooms and Suites') === cat).length;
                 const isActive = selectedCategoryTab === cat;
                 return (
@@ -3520,9 +3563,9 @@ export const AdminDashboard: React.FC = () => {
                                 paymentStatus: 'Deposit Paid',
                                 subtotal: 5000,
                                 addOnsTotal: 700,
-                                taxAmount: 684,
-                                totalAmount: 6384,
-                                depositAmount: 3192,
+                                taxAmount: 0,
+                                totalAmount: 5700,
+                                depositAmount: 2850,
                                 status: 'Confirmed',
                               },
                               resortInfo
@@ -3555,9 +3598,9 @@ export const AdminDashboard: React.FC = () => {
                               paymentStatus: 'Deposit Paid',
                               subtotal: 5000,
                               addOnsTotal: 700,
-                              taxAmount: 684,
-                              totalAmount: 6384,
-                              depositAmount: 3192,
+                              taxAmount: 0,
+                              totalAmount: 5700,
+                              depositAmount: 2850,
                               status: 'Confirmed',
                             },
                             resortInfo
@@ -4663,6 +4706,7 @@ export const AdminDashboard: React.FC = () => {
                     className="w-full px-3 py-2 rounded-xl bg-[#0e1710] border border-[#606e60]/60 text-[#ebe5de]"
                   >
                     <option value="Rooms and Suites">Rooms and Suites</option>
+                    <option value="Mesa Collection">Mesa Collection</option>
                     <option value="Cottages">Cottages</option>
                     <option value="Filipino Kubos">Filipino Kubos</option>
                   </select>
@@ -4862,6 +4906,7 @@ export const AdminDashboard: React.FC = () => {
                     className="w-full px-3 py-2 rounded-xl bg-[#0e1710] border border-[#606e60]/60 text-[#ebe5de]"
                   >
                     <option value="Rooms and Suites">Rooms and Suites</option>
+                    <option value="Mesa Collection">Mesa Collection</option>
                     <option value="Cottages">Cottages</option>
                     <option value="Filipino Kubos">Filipino Kubos</option>
                   </select>

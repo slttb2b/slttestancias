@@ -285,10 +285,11 @@ export const generateVoucherHTML = (booking: Booking, resortInfo: ResortInfo): s
           <span>Selected Add-Ons Total</span>
           <span>₱${booking.addOnsTotal.toLocaleString()}</span>
         </div>` : ''}
+        ${booking.taxAmount && booking.taxAmount > 0 ? `
         <div class="summary-row">
           <span>Taxes & Environmental Fee</span>
           <span>₱${booking.taxAmount.toLocaleString()}</span>
-        </div>
+        </div>` : ''}
         <div class="summary-row total">
           <span>Total Grand Amount</span>
           <span>₱${booking.totalAmount.toLocaleString()}</span>

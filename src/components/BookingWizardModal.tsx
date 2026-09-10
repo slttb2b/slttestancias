@@ -66,7 +66,7 @@ export const BookingWizardModal: React.FC = () => {
   );
   const [selectedPackage, setSelectedPackage] = useState<Package | null>(selectedPackageForBooking);
   const [additionalPackageRooms, setAdditionalPackageRooms] = useState<Room[]>([]);
-  const [modalCategoryFilter, setModalCategoryFilter] = useState<'All' | 'Rooms and Suites' | 'Cottages' | 'Filipino Kubos' | 'Packages'>('All');
+  const [modalCategoryFilter, setModalCategoryFilter] = useState<'All' | 'Rooms and Suites' | 'Cottages' | 'Filipino Kubos' | 'Mesa Collection' | 'Packages'>('All');
 
   // Status helper for rooms in catalog
   const getAccommodationStatus = (room: Room) => {
@@ -244,8 +244,8 @@ export const BookingWizardModal: React.FC = () => {
   });
 
   const addOnsTotal = activeAddOnsList.reduce((acc, curr) => acc + curr.total, 0);
-  const taxAmount = Math.round((subtotal + addOnsTotal) * 0.12);
-  const totalAmount = subtotal + addOnsTotal + taxAmount;
+  const taxAmount = 0;
+  const totalAmount = subtotal + addOnsTotal;
 
   let depositAmount = totalAmount;
   if (paymentMethod === 'Partial Deposit (50%)') {
@@ -549,6 +549,7 @@ export const BookingWizardModal: React.FC = () => {
                 {[
                   { id: 'All', label: 'All Catalog' },
                   { id: 'Rooms and Suites', label: 'Rooms & Suites' },
+                  { id: 'Mesa Collection', label: 'Mesa Collection' },
                   { id: 'Cottages', label: 'Cottages' },
                   { id: 'Filipino Kubos', label: 'Filipino Kubos' },
                   { id: 'Packages', label: 'Resort Packages' },
@@ -1542,11 +1543,6 @@ export const BookingWizardModal: React.FC = () => {
                     ))}
                   </div>
                 )}
-
-                <div className="flex justify-between pt-2 border-t border-[#606e60]/60 text-[#c3ccc0]">
-                  <span>Estimated Taxes & Sanctuary Fee (12%):</span>
-                  <span>₱{taxAmount.toLocaleString()}</span>
-                </div>
 
                 <div className="flex justify-between pt-2 border-t border-[#606e60] text-sm font-bold text-[#ad9e92]">
                   <span>Total Amount Due:</span>
