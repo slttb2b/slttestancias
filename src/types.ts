@@ -118,6 +118,20 @@ export interface AddOnService {
   isActive?: boolean;
 }
 
+export interface PaymentRecord {
+  id: string;
+  bookingId: string;
+  bookingRef: string;
+  guestName: string;
+  amount: number;
+  paymentMethod: string;
+  paymentReference?: string;
+  receiptUrl?: string;
+  paidAt: string; // ISO string
+  collectedBy?: string;
+  notes?: string;
+}
+
 export interface Booking {
   id: string;
   referenceNumber: string;
@@ -157,6 +171,9 @@ export interface Booking {
   taxAmount: number;
   totalAmount: number;
   depositAmount: number;
+  amountPaid?: number;
+  balanceAmount?: number;
+  payments?: PaymentRecord[];
   status: BookingStatus;
   adminNotes?: string;
   notificationsSent?: NotificationLog[];

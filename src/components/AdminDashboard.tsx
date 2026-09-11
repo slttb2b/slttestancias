@@ -7,6 +7,12 @@ import { uploadImageToFirebaseStorage } from '../services/storageService';
 import { resolveImageUrl } from '../utils/imageUtils';
 import { getTodayFormatted, getUnitOccupancyForDate } from '../utils/bookingUtils';
 import { AdminOccupancyBoard } from './AdminOccupancyBoard';
+import { PaymentGateModal } from './PaymentGateModal';
+import {
+  calculateBookingFinancials,
+  formatCurrency,
+  getPaymentBadgeProps,
+} from '../utils/paymentUtils';
 import {
   ShieldCheck,
   Shield,
@@ -77,6 +83,7 @@ export const AdminDashboard: React.FC = () => {
     setIsAdminLoggedIn,
     bookings,
     updateBookingStatus,
+    collectBookingPayment,
     deleteBooking,
     clearAllBookings,
     rooms,
@@ -128,6 +135,11 @@ export const AdminDashboard: React.FC = () => {
   const [loginError, setLoginError] = useState<string | null>(null);
 
   const [adminTab, setAdminTab] = useState<'bookings' | 'occupancy' | 'chat' | 'rooms' | 'packages' | 'addons' | 'builder' | 'system' | 'payments' | 'notifications' | 'users'>('bookings');
+
+  // PAYMENT GATE STATE
+  const [paymentGateBooking, setPaymentGateBooking] = useState<Booking | null>(null);
+  const [paymentGateInitialMode, setPaymentGateInitialMode] = useState<'required' | 'collect'>('required');
+  const [isPaymentGateModalOpen, setIsPaymentGateModalOpen] = useState<boolean>(false);
 
   // USER MANAGEMENT & SUPER ADMIN STATE
   const [userSearchQuery, setUserSearchQuery] = useState('');
@@ -1492,80 +1504,147 @@ export const AdminDashboard: React.FC = () => {
                     <th className="p-3">Reference</th>
                     <th className="p-3">Guest Details</th>
                     <th className="p-3">Room / Stay</th>
-                    <th className="p-3">Total Due</th>
-                    <th className="p-3">Payment & Channel</th>
+                    <th className="p-3">Financials (Cost / Balance)</th>
+                    <th className="p-3">Payment & Ledger</th>
                     <th className="p-3">Guest Receipt</th>
                     <th className="p-3">Booking Status</th>
                     <th className="p-3 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#606e60]/40">
-                  {filteredBookings.map((b) => (
-                    <tr key={b.id} className="hover:bg-[#1c2a20]/60 transition-colors">
-                      <td className="p-3 font-mono font-bold text-[#ad9e92]">{b.referenceNumber}</td>
-                      <td className="p-3">
-                        <span className="font-bold text-[#ebe5de] block">{b.guestName}</span>
-                        <span className="text-[#c3ccc0] block">{b.mobile}</span>
-                      </td>
-                      <td className="p-3">
-                        <span className="font-medium text-[#ad9e92] block">{b.roomName}</span>
-                        <span className="text-[#c3ccc0] block">{b.checkInDate} → {b.checkOutDate} ({b.numberOfNights}n)</span>
-                      </td>
-                      <td className="p-3 font-serif font-bold text-[#ad9e92] text-sm">
-                        ₱{b.totalAmount.toLocaleString()}
-                      </td>
-                      <td className="p-3">
-                        <span className="block text-[#ebe5de] font-bold">{b.paymentMethod}</span>
-                        <span className="text-[10px] text-[#ad9e92] block">Channel: {b.selectedPaymentChannel || 'GCash'}</span>
-                        <span className="text-[10px] text-green-400 font-bold block">{b.paymentStatus}</span>
-                      </td>
-                      <td className="p-3">
-                        {b.paymentReceiptUrl ? (
-                          <div className="flex items-center gap-2">
-                            <button
-                              onClick={() => setViewingReceiptUrl(b.paymentReceiptUrl || null)}
-                              className="relative group rounded-lg overflow-hidden border border-[#606e60] w-12 h-12 shrink-0 cursor-pointer"
-                              title="Click to view full receipt"
-                            >
-                              <img src={b.paymentReceiptUrl} alt="Receipt" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                              <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                <Eye className="w-4 h-4 text-white" />
-                              </div>
-                            </button>
-                            <div className="text-[10px] space-y-0.5">
-                              <span className="text-green-400 font-bold block">Receipt Attached</span>
-                              {b.paymentReferenceCode && (
-                                <span className="font-mono text-[#ebe5de] block">Ref: {b.paymentReferenceCode}</span>
-                              )}
-                            </div>
+                  {filteredBookings.map((b) => {
+                    const fin = calculateBookingFinancials(b);
+                    const badge = getPaymentBadgeProps(fin.paymentStatus, fin.outstandingBalance, b.status);
+
+                    return (
+                      <tr key={b.id} className="hover:bg-[#1c2a20]/60 transition-colors">
+                        <td className="p-3 font-mono font-bold text-[#ad9e92]">{b.referenceNumber}</td>
+                        <td className="p-3">
+                          <span className="font-bold text-[#ebe5de] block">{b.guestName}</span>
+                          <span className="text-[#c3ccc0] block">{b.mobile}</span>
+                        </td>
+                        <td className="p-3">
+                          <span className="font-medium text-[#ad9e92] block">{b.roomName}</span>
+                          <span className="text-[#c3ccc0] block">
+                            {b.checkInDate} → {b.checkOutDate} ({b.numberOfNights}n)
+                          </span>
+                        </td>
+                        <td className="p-3 space-y-0.5">
+                          <div className="flex items-center justify-between text-[11px]">
+                            <span className="text-[#c3ccc0]">Total:</span>
+                            <span className="font-serif font-bold text-[#ebe5de]">
+                              {formatCurrency(fin.totalCost)}
+                            </span>
                           </div>
-                        ) : (
-                          <span className="text-[10px] text-[#c3ccc0]/60 italic">No receipt uploaded</span>
-                        )}
-                      </td>
-                      <td className="p-3">
-                        <select
-                          value={b.status}
-                          onChange={(e) => updateBookingStatus(b.id, e.target.value as BookingStatus)}
-                          className="px-2.5 py-1.5 rounded-lg bg-[#0e1710] border border-[#606e60]/60 text-xs font-bold text-[#ebe5de] focus:outline-none focus:border-[#c3ccc0]"
-                        >
-                          <option value="Pending">Pending</option>
-                          <option value="Confirmed">Confirmed</option>
-                          <option value="Checked In">Checked In</option>
-                          <option value="Checked Out">Checked Out</option>
-                          <option value="Cancelled">Cancelled</option>
-                        </select>
-                      </td>
-                      <td className="p-3 text-right">
-                        <div className="flex items-center justify-end gap-1.5">
-                          <button
-                            onClick={() => downloadVoucher(b, resortInfo)}
-                            className="p-1.5 rounded bg-[#132016] border border-[#606e60] text-[#c3ccc0] hover:text-[#ebe5de] cursor-pointer flex items-center gap-1 text-[11px] font-semibold"
-                            title="Download/Print official confirmation voucher for this guest"
+                          <div className="flex items-center justify-between text-[11px] text-emerald-400">
+                            <span>Paid:</span>
+                            <span className="font-semibold">{formatCurrency(fin.amountPaid)}</span>
+                          </div>
+                          <div className="flex items-center justify-between text-[11px]">
+                            <span className="text-[#c3ccc0]">Balance:</span>
+                            <span
+                              className={`font-bold ${
+                                fin.outstandingBalance > 0 ? 'text-amber-400' : 'text-emerald-400'
+                              }`}
+                            >
+                              {fin.outstandingBalance > 0
+                                ? formatCurrency(fin.outstandingBalance)
+                                : '₱0 (Settled)'}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="p-3 space-y-1">
+                          <span className="block text-[#ebe5de] font-bold">{b.paymentMethod}</span>
+                          <span className="text-[10px] text-[#ad9e92] block">
+                            Channel: {b.selectedPaymentChannel || 'GCash'}
+                          </span>
+                          <span
+                            className={`inline-block font-bold text-[10px] px-2 py-0.5 rounded border ${badge.bgClass} ${badge.textClass} ${badge.borderClass}`}
                           >
-                            <Printer className="w-3.5 h-3.5 text-amber-400" />
-                            <span>Voucher</span>
-                          </button>
+                            {badge.label}
+                          </span>
+                        </td>
+                        <td className="p-3">
+                          {b.paymentReceiptUrl ? (
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => setViewingReceiptUrl(b.paymentReceiptUrl || null)}
+                                className="relative group rounded-lg overflow-hidden border border-[#606e60] w-12 h-12 shrink-0 cursor-pointer"
+                                title="Click to view full receipt"
+                              >
+                                <img
+                                  src={b.paymentReceiptUrl}
+                                  alt="Receipt"
+                                  className="w-full h-full object-cover"
+                                  referrerPolicy="no-referrer"
+                                />
+                                <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <Eye className="w-4 h-4 text-white" />
+                                </div>
+                              </button>
+                              <div className="text-[10px] space-y-0.5">
+                                <span className="text-green-400 font-bold block">Receipt Attached</span>
+                                {b.paymentReferenceCode && (
+                                  <span className="font-mono text-[#ebe5de] block">
+                                    Ref: {b.paymentReferenceCode}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          ) : (
+                            <span className="text-[10px] text-[#c3ccc0]/60 italic">No receipt uploaded</span>
+                          )}
+                        </td>
+                        <td className="p-3">
+                          <select
+                            value={b.status}
+                            onChange={(e) => {
+                              const newStatus = e.target.value as BookingStatus;
+                              if (newStatus === 'Checked In') {
+                                const checkFin = calculateBookingFinancials(b);
+                                if (checkFin.isCheckInBlocked) {
+                                  setPaymentGateBooking(b);
+                                  setPaymentGateInitialMode('required');
+                                  setIsPaymentGateModalOpen(true);
+                                  return;
+                                }
+                              }
+                              updateBookingStatus(b.id, newStatus);
+                            }}
+                            className="px-2.5 py-1.5 rounded-lg bg-[#0e1710] border border-[#606e60]/60 text-xs font-bold text-[#ebe5de] focus:outline-none focus:border-[#c3ccc0]"
+                          >
+                            <option value="Pending">Pending</option>
+                            <option value="Confirmed">Confirmed</option>
+                            <option value="Checked In">Checked In</option>
+                            <option value="Checked Out">Checked Out</option>
+                            <option value="Cancelled">Cancelled</option>
+                          </select>
+                        </td>
+                        <td className="p-3 text-right">
+                          <div className="flex items-center justify-end gap-1.5">
+                            {fin.outstandingBalance > 0 && (
+                              <button
+                                onClick={() => {
+                                  setPaymentGateBooking(b);
+                                  setPaymentGateInitialMode('collect');
+                                  setIsPaymentGateModalOpen(true);
+                                }}
+                                className="p-1.5 rounded bg-emerald-950/80 border border-emerald-700/80 text-emerald-300 hover:text-white cursor-pointer flex items-center gap-1 text-[11px] font-semibold transition-colors"
+                                title={`Collect remaining balance of ${formatCurrency(fin.outstandingBalance)}`}
+                              >
+                                <CreditCard className="w-3.5 h-3.5 text-emerald-400" />
+                                <span>Collect</span>
+                              </button>
+                            )}
+
+                            <button
+                              onClick={() => downloadVoucher(b, resortInfo)}
+                              className="p-1.5 rounded bg-[#132016] border border-[#606e60] text-[#c3ccc0] hover:text-[#ebe5de] cursor-pointer flex items-center gap-1 text-[11px] font-semibold"
+                              title="Download/Print official confirmation voucher for this guest"
+                            >
+                              <Printer className="w-3.5 h-3.5 text-amber-400" />
+                              <span>Voucher</span>
+                            </button>
 
                           <button
                             onClick={() => {
@@ -1604,7 +1683,8 @@ export const AdminDashboard: React.FC = () => {
                         </div>
                       </td>
                     </tr>
-                  ))}
+                  );
+                })}
                   {filteredBookings.length === 0 && (
                     <tr>
                       <td colSpan={8} className="text-center py-8 text-[#c3ccc0]/60">
@@ -5854,6 +5934,19 @@ export const AdminDashboard: React.FC = () => {
               </div>
             </div>
           </div>
+        )}
+
+        {/* Check-In Payment Gate & Balance Settlement Modal */}
+        {paymentGateBooking && (
+          <PaymentGateModal
+            isOpen={isPaymentGateModalOpen}
+            onClose={() => {
+              setIsPaymentGateModalOpen(false);
+              setPaymentGateBooking(null);
+            }}
+            booking={paymentGateBooking}
+            initialMode={paymentGateInitialMode}
+          />
         )}
       </div>
     </div>

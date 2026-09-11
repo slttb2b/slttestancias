@@ -216,6 +216,15 @@ export const FrontDeskWalkInModal: React.FC<FrontDeskWalkInModalProps> = ({
 
     const collectedNum = parseFloat(amountCollectedInput) || 0;
 
+    // --- CHECK-IN PAYMENT GATE ENFORCEMENT ---
+    if (initialStatus === 'Checked In' && collectedNum < totalAmount) {
+      showToast(
+        `Payment Gate: Cannot check in guest. Full payment of ₱${totalAmount.toLocaleString()} is required before Check-In. Remaining balance: ₱${(totalAmount - collectedNum).toLocaleString()}`,
+        'error'
+      );
+      return;
+    }
+
     const newBooking: Booking = {
       id: bookingId,
       referenceNumber: refNum,
@@ -258,6 +267,22 @@ export const FrontDeskWalkInModal: React.FC<FrontDeskWalkInModalProps> = ({
       taxAmount: 0,
       totalAmount,
       depositAmount: paymentStatus === 'Fully Paid' ? totalAmount : collectedNum,
+      amountPaid: collectedNum,
+      balanceAmount: Math.max(0, totalAmount - collectedNum),
+      payments: collectedNum > 0 ? [
+        {
+          id: `pay-walkin-${Date.now()}`,
+          bookingId,
+          bookingRef: refNum,
+          guestName: guestName.trim(),
+          amount: collectedNum,
+          paymentMethod: paymentType,
+          paymentReference: `FRONTDESK-WALKIN-${paymentType.toUpperCase()}`,
+          paidAt: new Date().toISOString(),
+          collectedBy: 'Front Desk Staff',
+          notes: 'Collected at front desk during walk-in reservation',
+        },
+      ] : [],
       status: initialStatus,
       adminNotes: `Front-Desk Walk-In reservation logged by staff. Payment: ${paymentType} (₱${collectedNum.toLocaleString()} collected). Key Issued: ${keyNumber || 'Standard'}.`,
     };

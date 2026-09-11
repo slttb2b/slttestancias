@@ -4,6 +4,12 @@ import { Room, Booking, BookingStatus } from '../types';
 import { getTodayFormatted, getTomorrowFormatted, getUnitOccupancyForDate } from '../utils/bookingUtils';
 import { downloadVoucher } from '../utils/voucher';
 import { FrontDeskWalkInModal } from './FrontDeskWalkInModal';
+import { PaymentGateModal } from './PaymentGateModal';
+import {
+  calculateBookingFinancials,
+  formatCurrency,
+  getPaymentBadgeProps,
+} from '../utils/paymentUtils';
 import {
   BedDouble,
   Building2,
@@ -28,6 +34,8 @@ import {
   ExternalLink,
   ChevronRight,
   Home,
+  CreditCard,
+  Lock,
 } from 'lucide-react';
 
 interface AdminOccupancyBoardProps {
@@ -44,6 +52,8 @@ export const AdminOccupancyBoard: React.FC<AdminOccupancyBoardProps> = ({
     bookings,
     resortInfo,
     updateBookingStatus,
+    collectBookingPayment,
+    currentAdminUser,
     toggleRoomAvailability,
     setSelectedRoomForBooking,
     setIsBookingModalOpen,
@@ -63,6 +73,11 @@ export const AdminOccupancyBoard: React.FC<AdminOccupancyBoardProps> = ({
 
   // Modal for Quick Unit Details or Selected Booking
   const [inspectBooking, setInspectBooking] = useState<Booking | null>(null);
+
+  // Payment Gate Modal State
+  const [paymentGateBooking, setPaymentGateBooking] = useState<Booking | null>(null);
+  const [paymentGateInitialMode, setPaymentGateInitialMode] = useState<'required' | 'collect'>('required');
+  const [isPaymentGateModalOpen, setIsPaymentGateModalOpen] = useState<boolean>(false);
 
   // Front-Desk Walk-In Modal
   const [walkInModalRoom, setWalkInModalRoom] = useState<Room | null>(null);
@@ -181,8 +196,16 @@ export const AdminOccupancyBoard: React.FC<AdminOccupancyBoardProps> = ({
     setSelectedRoomForBooking(room);
   };
 
-  // Action: Check in guest
+  // Action: Check in guest (Protected by Payment Gate)
   const handleCheckInGuest = (booking: Booking) => {
+    const financials = calculateBookingFinancials(booking);
+    if (financials.isCheckInBlocked) {
+      setPaymentGateBooking(booking);
+      setPaymentGateInitialMode('required');
+      setIsPaymentGateModalOpen(true);
+      return;
+    }
+
     updateBookingStatus(booking.id, 'Checked In');
     showToast(`Guest ${booking.guestName} marked as CHECKED IN!`, 'success');
   };
@@ -732,20 +755,24 @@ export const AdminOccupancyBoard: React.FC<AdminOccupancyBoardProps> = ({
                       </div>
 
                       {/* Payment Status indicator */}
-                      <div className="flex items-center justify-between text-[11px] pt-1 border-t border-white/10">
-                        <span className="text-[#c3ccc0]">Payment:</span>
-                        <span
-                          className={`font-bold px-2 py-0.5 rounded text-[10px] ${
-                            activeBooking.paymentStatus === 'Fully Paid'
-                              ? 'bg-emerald-950 text-emerald-300 border border-emerald-700/50'
-                              : activeBooking.paymentStatus === 'Deposit Paid'
-                              ? 'bg-amber-950 text-amber-300 border border-amber-700/50'
-                              : 'bg-red-950 text-red-300 border border-red-700/50'
-                          }`}
-                        >
-                          {activeBooking.paymentStatus || 'Unpaid'} (₱{activeBooking.totalAmount.toLocaleString()})
-                        </span>
-                      </div>
+                      {(() => {
+                        const actFin = calculateBookingFinancials(activeBooking);
+                        const badgeProps = getPaymentBadgeProps(
+                          actFin.paymentStatus,
+                          actFin.outstandingBalance,
+                          activeBooking.status
+                        );
+                        return (
+                          <div className="flex items-center justify-between text-[11px] pt-1 border-t border-white/10">
+                            <span className="text-[#c3ccc0]">Payment:</span>
+                            <span
+                              className={`font-bold px-2 py-0.5 rounded text-[10px] border ${badgeProps.bgClass} ${badgeProps.textClass} ${badgeProps.borderClass}`}
+                            >
+                              {badgeProps.label}
+                            </span>
+                          </div>
+                        );
+                      })()}
                     </div>
                   )}
 
@@ -808,24 +835,79 @@ export const AdminOccupancyBoard: React.FC<AdminOccupancyBoardProps> = ({
                         </button>
 
                         <div className="flex items-center gap-1.5">
-                          {isArrivingToday && activeBooking.status !== 'Checked In' && (
-                            <button
-                              type="button"
-                              onClick={() => handleCheckInGuest(activeBooking)}
-                              className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer shadow-md"
-                            >
-                              <Check className="w-3.5 h-3.5" />
-                              <span>Check-In</span>
-                            </button>
-                          )}
+                          {(() => {
+                            const actFin = calculateBookingFinancials(activeBooking);
 
-                          <button
-                            type="button"
-                            onClick={() => handleCheckOutGuest(activeBooking)}
-                            className="px-3 py-1.5 rounded-xl bg-red-950/80 hover:bg-red-900 border border-red-800 text-red-200 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
-                          >
-                            <span>Check-Out</span>
-                          </button>
+                            return (
+                              <>
+                                {isArrivingToday && activeBooking.status !== 'Checked In' && (
+                                  <>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleCheckInGuest(activeBooking)}
+                                      className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer shadow-md ${
+                                        actFin.isCheckInBlocked
+                                          ? 'bg-amber-600 hover:bg-amber-500 text-white'
+                                          : 'bg-blue-600 hover:bg-blue-500 text-white'
+                                      }`}
+                                      title={
+                                        actFin.isCheckInBlocked
+                                          ? `Payment required before check-in (₱${actFin.outstandingBalance.toLocaleString()} Due)`
+                                          : 'Check-In Guest'
+                                      }
+                                    >
+                                      {actFin.isCheckInBlocked ? (
+                                        <Lock className="w-3.5 h-3.5" />
+                                      ) : (
+                                        <Check className="w-3.5 h-3.5" />
+                                      )}
+                                      <span>Check-In</span>
+                                    </button>
+
+                                    {actFin.outstandingBalance > 0 && (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setPaymentGateBooking(activeBooking);
+                                          setPaymentGateInitialMode('collect');
+                                          setIsPaymentGateModalOpen(true);
+                                        }}
+                                        className="px-2.5 py-1.5 rounded-xl bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-700/60 text-emerald-300 text-xs font-bold flex items-center gap-1 transition-colors cursor-pointer"
+                                        title="Collect remaining balance"
+                                      >
+                                        <CreditCard className="w-3.5 h-3.5" />
+                                        <span>Collect ₱{actFin.outstandingBalance.toLocaleString()}</span>
+                                      </button>
+                                    )}
+                                  </>
+                                )}
+
+                                {activeBooking.status === 'Checked In' && actFin.outstandingBalance > 0 && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setPaymentGateBooking(activeBooking);
+                                      setPaymentGateInitialMode('collect');
+                                      setIsPaymentGateModalOpen(true);
+                                    }}
+                                    className="px-2.5 py-1.5 rounded-xl bg-red-950/80 hover:bg-red-900 border border-red-700 text-red-200 text-xs font-bold flex items-center gap-1 transition-colors cursor-pointer animate-pulse"
+                                    title="Unpaid balance detected on checked-in guest! Settle now."
+                                  >
+                                    <AlertTriangle className="w-3.5 h-3.5 text-red-400" />
+                                    <span>Settle ₱{actFin.outstandingBalance.toLocaleString()}</span>
+                                  </button>
+                                )}
+
+                                <button
+                                  type="button"
+                                  onClick={() => handleCheckOutGuest(activeBooking)}
+                                  className="px-3 py-1.5 rounded-xl bg-red-950/80 hover:bg-red-900 border border-red-800 text-red-200 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                                >
+                                  <span>Check-Out</span>
+                                </button>
+                              </>
+                            );
+                          })()}
                         </div>
                       </>
                     ) : null}
@@ -1091,42 +1173,141 @@ export const AdminOccupancyBoard: React.FC<AdminOccupancyBoardProps> = ({
                 </div>
               </div>
 
-              <div className="p-3.5 rounded-2xl bg-[#0e1710] border border-[#606e60]/60 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-[#c3ccc0]">Phone / Mobile:</span>
-                  <a href={`tel:${inspectBooking.mobile}`} className="text-cyan-400 font-bold hover:underline">
-                    {inspectBooking.mobile}
-                  </a>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-[#c3ccc0]">Email Address:</span>
-                  <span className="text-[#ebe5de] font-medium">{inspectBooking.email || 'N/A'}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-[#c3ccc0]">Payment Status:</span>
-                  <span className="font-bold text-[#ad9e92]">
-                    {inspectBooking.paymentStatus} (₱{inspectBooking.totalAmount.toLocaleString()})
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-[#c3ccc0]">Payment Channel:</span>
-                  <span className="text-[#ebe5de]">
-                    {inspectBooking.selectedPaymentChannel || inspectBooking.paymentMethod}
-                  </span>
-                </div>
-              </div>
+              {(() => {
+                const inspectFin = calculateBookingFinancials(inspectBooking);
+                const badge = getPaymentBadgeProps(
+                  inspectFin.paymentStatus,
+                  inspectFin.outstandingBalance,
+                  inspectBooking.status
+                );
+
+                return (
+                  <div className="space-y-3">
+                    <div className="p-3.5 rounded-2xl bg-[#0e1710] border border-[#606e60]/60 space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[#c3ccc0]">Phone / Mobile:</span>
+                        <a
+                          href={`tel:${inspectBooking.mobile}`}
+                          className="text-cyan-400 font-bold hover:underline"
+                        >
+                          {inspectBooking.mobile}
+                        </a>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-[#c3ccc0]">Email Address:</span>
+                        <span className="text-[#ebe5de] font-medium">
+                          {inspectBooking.email || 'N/A'}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-[#c3ccc0]">Payment Channel:</span>
+                        <span className="text-[#ebe5de]">
+                          {inspectBooking.selectedPaymentChannel || inspectBooking.paymentMethod}
+                        </span>
+                      </div>
+
+                      {/* Financial Accounting Breakdown */}
+                      <div className="pt-2 border-t border-[#606e60]/50 space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[#c3ccc0]">Total Booking Cost:</span>
+                          <span className="font-bold text-[#ebe5de]">
+                            {formatCurrency(inspectFin.totalCost)}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between text-emerald-400">
+                          <span>Amount Verified / Paid:</span>
+                          <span className="font-bold">
+                            {formatCurrency(inspectFin.amountPaid)}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-[#c3ccc0]">Outstanding Balance:</span>
+                          <span
+                            className={`font-black text-sm ${
+                              inspectFin.outstandingBalance > 0
+                                ? 'text-amber-400'
+                                : 'text-emerald-400'
+                            }`}
+                          >
+                            {formatCurrency(inspectFin.outstandingBalance)}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between pt-1">
+                          <span className="text-[#c3ccc0]">Financial Status:</span>
+                          <span
+                            className={`px-2 py-0.5 rounded text-[10px] font-bold border ${badge.bgClass} ${badge.textClass} ${badge.borderClass}`}
+                          >
+                            {badge.label}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {inspectFin.outstandingBalance > 0 && (
+                      <div className="p-3 rounded-2xl bg-amber-950/40 border border-amber-600/50 flex items-start gap-2.5">
+                        <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+                        <div className="text-xs space-y-1">
+                          <p className="font-bold text-amber-200">
+                            Unpaid Balance: {formatCurrency(inspectFin.outstandingBalance)}
+                          </p>
+                          <p className="text-amber-300/80 text-[11px]">
+                            Check-in is locked until this outstanding balance is collected and recorded in full.
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
 
             {/* Modal Actions */}
-            <div className="flex items-center justify-between gap-3 pt-3 border-t border-[#606e60]/60">
-              <button
-                type="button"
-                onClick={() => downloadVoucher(inspectBooking, resortInfo)}
-                className="px-4 py-2 rounded-xl bg-[#1c2a20] border border-[#606e60] hover:border-[#ad9e92] text-[#ebe5de] text-xs font-bold flex items-center gap-2 transition-colors cursor-pointer"
-              >
-                <Download className="w-4 h-4 text-[#ad9e92]" />
-                <span>Download Guest Voucher</span>
-              </button>
+            <div className="flex flex-wrap items-center justify-between gap-2.5 pt-3 border-t border-[#606e60]/60">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => downloadVoucher(inspectBooking, resortInfo)}
+                  className="px-3.5 py-2 rounded-xl bg-[#1c2a20] border border-[#606e60] hover:border-[#ad9e92] text-[#ebe5de] text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  <Download className="w-4 h-4 text-[#ad9e92]" />
+                  <span>Voucher</span>
+                </button>
+
+                {(() => {
+                  const fin = calculateBookingFinancials(inspectBooking);
+                  if (fin.outstandingBalance > 0) {
+                    return (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPaymentGateBooking(inspectBooking);
+                          setPaymentGateInitialMode('collect');
+                          setIsPaymentGateModalOpen(true);
+                        }}
+                        className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer shadow"
+                      >
+                        <CreditCard className="w-4 h-4" />
+                        <span>Collect {formatCurrency(fin.outstandingBalance)}</span>
+                      </button>
+                    );
+                  }
+                  return null;
+                })()}
+
+                {inspectBooking.status !== 'Checked In' && inspectBooking.status !== 'Checked Out' && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleCheckInGuest(inspectBooking);
+                      setInspectBooking(null);
+                    }}
+                    className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer shadow"
+                  >
+                    <Check className="w-4 h-4" />
+                    <span>Check-In</span>
+                  </button>
+                )}
+              </div>
 
               <button
                 type="button"
@@ -1150,6 +1331,19 @@ export const AdminOccupancyBoard: React.FC<AdminOccupancyBoardProps> = ({
         initialRoom={walkInModalRoom}
         initialDate={selectedDate}
       />
+
+      {/* Check-In Payment Gate & Balance Settlement Modal */}
+      {paymentGateBooking && (
+        <PaymentGateModal
+          isOpen={isPaymentGateModalOpen}
+          onClose={() => {
+            setIsPaymentGateModalOpen(false);
+            setPaymentGateBooking(null);
+          }}
+          booking={paymentGateBooking}
+          initialMode={paymentGateInitialMode}
+        />
+      )}
     </div>
   );
 };

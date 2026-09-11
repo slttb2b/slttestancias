@@ -16,7 +16,9 @@ import {
   ChatMessage,
   AdminUser,
   AddOnService,
+  PaymentRecord,
 } from '../types';
+import { calculateBookingFinancials, ensurePaymentHistory } from '../utils/paymentUtils';
 import {
   INITIAL_RESORT_INFO,
   INITIAL_PAYMENT_SETTINGS,
@@ -156,6 +158,18 @@ interface ResortContextType {
   setIsAdminLoggedIn: (val: boolean) => void;
   addBooking: (booking: Booking) => void;
   updateBookingStatus: (id: string, status: BookingStatus, notes?: string, paymentStatus?: 'Unpaid' | 'Deposit Paid' | 'Fully Paid') => void;
+  collectBookingPayment: (
+    bookingId: string,
+    paymentData: {
+      amount: number;
+      paymentMethod: string;
+      paymentReference?: string;
+      receiptUrl?: string;
+      collectedBy?: string;
+      notes?: string;
+    },
+    checkInImmediately?: boolean
+  ) => Promise<{ success: boolean; updatedBooking?: Booking; error?: string }>;
   deleteBooking: (id: string) => void;
   clearAllBookings: () => Promise<void>;
   recalculateBookingsWithoutTax: () => Promise<number>;
@@ -1107,6 +1121,23 @@ export const ResortProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     paymentStatus?: 'Unpaid' | 'Deposit Paid' | 'Fully Paid'
   ) => {
     const targetBooking = bookings.find((b) => b.id === id);
+    if (!targetBooking) return;
+
+    // --- CHECK-IN PAYMENT GATE ENFORCEMENT ---
+    // If Check-In is requested, ensure no unpaid balance remains.
+    if (status === 'Checked In') {
+      const financials = calculateBookingFinancials(targetBooking);
+      if (financials.isCheckInBlocked) {
+        showToast(
+          `Payment Gate: Booking ${targetBooking.referenceNumber} has an outstanding balance of ₱${financials.outstandingBalance.toLocaleString()}. Full payment must be collected before Check-In.`,
+          'error'
+        );
+        console.warn(
+          `[Payment Gate Blocked Check-In] Booking ${targetBooking.referenceNumber} cannot be checked in. Outstanding balance: ₱${financials.outstandingBalance}`
+        );
+        return;
+      }
+    }
 
     setBookings((prev) =>
       prev.map((b) => {
@@ -1153,6 +1184,121 @@ export const ResortProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       showToast(`Booking ${targetBooking.referenceNumber || id} CONFIRMED! Automated Email notification dispatched to ${targetBooking.email}`, 'success');
     } else {
       showToast(`Booking ${id} status updated to ${status}.`, 'info');
+    }
+  };
+
+  const collectBookingPayment = async (
+    bookingId: string,
+    paymentData: {
+      amount: number;
+      paymentMethod: string;
+      paymentReference?: string;
+      receiptUrl?: string;
+      collectedBy?: string;
+      notes?: string;
+    },
+    checkInImmediately = false
+  ): Promise<{ success: boolean; updatedBooking?: Booking; error?: string }> => {
+    const targetBooking = bookings.find((b) => b.id === bookingId);
+    if (!targetBooking) {
+      return { success: false, error: 'Booking reservation record was not found.' };
+    }
+
+    const currentFinancials = calculateBookingFinancials(targetBooking);
+    const paymentAmount = Math.max(0, Number(paymentData.amount) || 0);
+
+    if (paymentAmount <= 0) {
+      return { success: false, error: 'Payment amount must be greater than 0.' };
+    }
+
+    const newAmountPaid = Math.min(
+      currentFinancials.totalAmount,
+      currentFinancials.amountPaid + paymentAmount
+    );
+    const newBalance = Math.max(0, currentFinancials.totalAmount - newAmountPaid);
+    const newPaymentStatus: 'Unpaid' | 'Deposit Paid' | 'Fully Paid' =
+      newBalance === 0 ? 'Fully Paid' : 'Deposit Paid';
+
+    // Gate: Check-In requires full payment
+    if (checkInImmediately && newBalance > 0) {
+      return {
+        success: false,
+        error: `Full payment is strictly required for Check-In. Remaining balance: ₱${newBalance.toLocaleString()}`,
+      };
+    }
+
+    const newPaymentRecord: PaymentRecord = {
+      id: `pay-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      bookingId: targetBooking.id,
+      bookingRef: targetBooking.referenceNumber || targetBooking.id,
+      guestName: targetBooking.guestName,
+      amount: paymentAmount,
+      paymentMethod: paymentData.paymentMethod || 'Over the Counter',
+      paymentReference: paymentData.paymentReference || undefined,
+      receiptUrl: paymentData.receiptUrl || undefined,
+      paidAt: new Date().toISOString(),
+      collectedBy: paymentData.collectedBy || 'Front Desk Staff',
+      notes: paymentData.notes || undefined,
+    };
+
+    const existingPayments =
+      Array.isArray(targetBooking.payments) && targetBooking.payments.length > 0
+        ? targetBooking.payments
+        : currentFinancials.amountPaid > 0
+        ? ensurePaymentHistory(targetBooking)
+        : [];
+
+    const updatedPayments = [...existingPayments, newPaymentRecord];
+
+    const timestamp = new Date().toLocaleString();
+    const auditEntry = `[${timestamp}] Payment of ₱${paymentAmount.toLocaleString()} collected via ${
+      paymentData.paymentMethod
+    }${paymentData.paymentReference ? ` (Ref: ${paymentData.paymentReference})` : ''} by ${
+      paymentData.collectedBy || 'Staff'
+    }. Balance: ₱${newBalance.toLocaleString()}.${checkInImmediately && newBalance === 0 ? ' Status updated to Checked In.' : ''}`;
+
+    const combinedNotes = targetBooking.adminNotes
+      ? `${targetBooking.adminNotes}\n${auditEntry}`
+      : auditEntry;
+
+    const nextStatus: BookingStatus =
+      checkInImmediately && newBalance === 0 ? 'Checked In' : targetBooking.status;
+
+    const updatedBooking: Booking = {
+      ...targetBooking,
+      amountPaid: newAmountPaid,
+      balanceAmount: newBalance,
+      paymentStatus: newPaymentStatus,
+      status: nextStatus,
+      payments: updatedPayments,
+      paymentReceiptUrl: paymentData.receiptUrl || targetBooking.paymentReceiptUrl,
+      paymentReferenceCode: paymentData.paymentReference || targetBooking.paymentReferenceCode,
+      adminNotes: combinedNotes,
+    };
+
+    try {
+      await saveBookingToFirestore(updatedBooking);
+
+      setBookings((prev) => prev.map((b) => (b.id === bookingId ? updatedBooking : b)));
+      safeSave('sltt_bookings', bookings.map((b) => (b.id === bookingId ? updatedBooking : b)));
+
+      if (nextStatus === 'Checked In') {
+        showToast(
+          `Payment of ₱${paymentAmount.toLocaleString()} recorded! Guest ${targetBooking.guestName} is now Fully Paid and Checked In.`,
+          'success'
+        );
+      } else {
+        showToast(
+          `Payment of ₱${paymentAmount.toLocaleString()} recorded successfully! Remaining balance: ₱${newBalance.toLocaleString()}`,
+          'success'
+        );
+      }
+
+      return { success: true, updatedBooking };
+    } catch (err: any) {
+      console.error('Error saving payment to Firestore:', err);
+      showToast('Failed to save payment record. Please try again.', 'error');
+      return { success: false, error: err?.message || 'Database update failed.' };
     }
   };
 
@@ -1541,6 +1687,7 @@ export const ResortProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         setIsVisualEditMode,
         addBooking,
         updateBookingStatus,
+        collectBookingPayment,
         deleteBooking,
         clearAllBookings,
         recalculateBookingsWithoutTax,
